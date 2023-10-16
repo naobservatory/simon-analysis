@@ -28,15 +28,11 @@ studies = list(metadata_papers.keys())
 def start():
     target_bio_projects = {}
     for study in studies:
-        if study in [
-            "Johnson 2023",  # unpublished data
-            "Cui 2023",  # untreated undigested sludge
-            "Wang 2022",  # COVID-19 hospital wastewater
-            "Petersen 2015",  # air plane waste
-            "Hendriksen 2019",  # man hole"
-            "Moritz 2019",  # university wastewater
-            "Wu 2020",  # lung sample
-            "Fierer 2022",  # university campus
+        if study not in [
+            "Rothman 2021",
+            "Brinch 2020",
+            "Spurbeck 2023",
+            "Crits-Christoph 2021",
         ]:
             continue
 

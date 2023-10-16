@@ -17,15 +17,11 @@ for sample, fastqs in sorted(samples.items()):
 
     cmd = [
         "/Users/simongrimm/code/bowtie2-2.5.1-macos-arm64/bowtie2",
-        "--local",
         "-x",
         "human-viruses",
-        "--very-sensitive-local",
+        "--very-sensitive",
         "--score-min",
-        "G,1,0",
-        "--mp",
-        "2,0",
-        "--no-unal",
+        "L,-0.6,-0.6",
         "--threads",
         "24",
         "-S",
