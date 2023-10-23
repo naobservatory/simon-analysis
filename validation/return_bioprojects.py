@@ -56,7 +56,7 @@ def start():
             samples = [
                 sample
                 for sample in samples
-                if metadata_samples[sample].get("enrichment") == "panel"
+                if metadata_samples[sample].get("enrichment") != "panel"
             ]
 
             # if target_bio_projects[bioproject] doesn't exist, create it
