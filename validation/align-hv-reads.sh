@@ -28,10 +28,13 @@ if [ ! -e observed-human-virus-taxids.txt ]; then
         observed-human-virus-taxids.txt
 fi
 
+~/code/simons-public-notebook/validation/get_genomes.py
+
+
 if [ ! -d raw-genomes ]; then
     mkdir raw-genomes
     for x in $(find refseq/ | grep gz$); do
-        zcat "$x" > raw-genomes/$(basename ${x/.fna.gz/.fna})
+        gunzip -c "$x" > raw-genomes/$(basename ${x/.fna.gz/.fna})
     done
 fi
 

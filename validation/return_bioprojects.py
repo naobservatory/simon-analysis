@@ -53,6 +53,12 @@ def start():
                     if metadata_samples[sample]["fine_location"] == "Influent"
                 ]
 
+            samples = [
+                sample
+                for sample in samples
+                if metadata_samples[sample].get("enrichment") == "panel"
+            ]
+
             # if target_bio_projects[bioproject] doesn't exist, create it
             if bioproject not in target_bio_projects:
                 target_bio_projects[bioproject] = []
