@@ -75,6 +75,7 @@ def return_sam_records():
                         read_type,
                     ]
                 )
+
     df = pd.DataFrame(
         sam_records,
         columns=[
@@ -87,35 +88,22 @@ def return_sam_records():
         ],
     )
 
+    return df
+
 
 def start():
     df = return_sam_records()
+    dropped_merged = df[
+        (df["read_type"] == "combined") & (df["length_adj_score"] < 10)
+    ]["read_id"].tolist()
 
-    LOW_CUT_OFF = 4
-    HIGH_CUT_OFF = 25
-    MID_CUT_OFF = 15
+    dropped_non_merged = (
+        df[df["read_type"].str.startswith("read_")]
+        .groupby("read_id")
+        .filter(lambda x: (x["length_adj_score"].max() < 10))
+    )["read_id"].to_list()
 
-    low_sample = df[df["length_adj_score"].round() == LOW_CUT_OFF].sample(
-        n=10, random_state=1
-    )
-
-    mid_sample = df[df["length_adj_score"].round() == MID_CUT_OFF].sample(
-        n=10, random_state=1
-    )
-    # get shape of length_adj_score_5_sub_sample
-
-    high_sample = df[df["length_adj_score"].round() == HIGH_CUT_OFF].sample(
-        n=10, random_state=1
-    )
-
-    concatenated_samples = pd.concat([low_sample, mid_sample, high_sample])
-
-    # Save the data to a CSV file
-    concatenated_samples.to_csv("alignment_sample.csv", index=False)
-
-    zero_score_samples = df[df["length_adj_score"] == 0].sample(n=10, random_state=1)
-
-    zero_score_samples.to_csv("zero_score_samples.csv", index=False)
+    print(dropped_merged + dropped_non_merged)
 
 
 if __name__ == "__main__":

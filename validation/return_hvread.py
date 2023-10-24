@@ -6,7 +6,10 @@ import json
 
 def find_hv_entry(entry):
     directory_path = "hvreads"
-    file_id, _ = entry.split(".")
+    if entry.startswith("M"):
+        file_id = entry.split("_")[1].split(".")[0]
+    else:
+        file_id, _ = entry.split(".")
     filename = file_id + ".hvreads.json"
 
     file_path = os.path.join(directory_path, filename)
@@ -19,8 +22,8 @@ def find_hv_entry(entry):
             # Check if the entry is in the data
             if entry in data:
                 read_data = data[entry]
-                quality_scores = read_data[0]
-                print(entry, quality_scores)
+
+                print(entry, read_data)
 
             else:
                 print(f"Entry {entry} not found in the data.")

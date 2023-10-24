@@ -11,7 +11,7 @@ if [ ! -d hvreads ]; then
                 echo s3://$bucket/${bioproject}/hvreads/${sample}.hvreads.json
             done
         done
-    done | xargs -P 32 -I {} aws s3 cp {} hvreads/
+    done | xargs -P 32 -I {} aws s3 cp {} hvreads/ 
 fi
 # Creating fastq files, based on hvreads. Creates pair1, pair2, and combined fastq files.
 if [ ! -d hvfastqs ]; then
@@ -28,6 +28,7 @@ if [ ! -e observed-human-virus-taxids.txt ]; then
         observed-human-virus-taxids.txt
 fi
 
+# Creates detailed-taxids.txt, hv_taxid_to_detailed.json, refseq/viral/*, and ncbi-fetch-metadata.txt
 ~/code/simons-public-notebook/validation/get_genomes.py
 
 

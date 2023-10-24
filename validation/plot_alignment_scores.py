@@ -61,7 +61,7 @@ def return_sam_records():
 
 def start():
     df = return_sam_records()
-    plt.hist(df["length_adj_score"], bins=100)
+    plt.hist(df[df["length_adj_score"] != 0]["length_adj_score"], bins=100)
     plt.title("Length-adjusted Alignment Scores")
     plt.xlabel("Alignment Score")
     plt.ylabel("Frequency")
