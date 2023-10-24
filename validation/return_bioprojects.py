@@ -39,20 +39,6 @@ def start():
         for bioproject in metadata_papers[study]["projects"]:
             samples = metadata_bioprojects[bioproject]
 
-            if study == "Bengtsson-Palme 2016":
-                samples = [
-                    sample
-                    for sample in samples
-                    if metadata_samples[sample]["fine_location"].startswith("Inlet")
-                ]
-
-            if study == "Ng 2019":
-                samples = [
-                    sample
-                    for sample in samples
-                    if metadata_samples[sample]["fine_location"] == "Influent"
-                ]
-
             samples = [
                 sample
                 for sample in samples
