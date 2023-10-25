@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+if [ -d target_projects_and_samples]; then
+    ~/code/simons-public-notebook/validation/return_bioprojects.py
+fi    
 json_file=~/code/simons-public-notebook/validation/target_projects_and_samples.json
 # creating and populating hvreads directory, based on target_projects_and_samples.json
 if [ ! -d hvreads ]; then
