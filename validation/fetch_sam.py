@@ -1,10 +1,13 @@
 #!/usr/bin/env python
 import os
 import sys  # Required for command-line arguments
+from return_sam_records import sam_records
 
 
 def find_sam_entry(entry):
     directory_path = "hvsams"
+    sams = sam_records()
+
     try:
         if entry.startswith("M"):
             file_id = entry.split("_")[1].split(".")[0]
@@ -22,6 +25,7 @@ def find_sam_entry(entry):
 
                 if sam_entry == entry:
                     print(line)
+                    print(sams[sams["read_id"] == entry])
 
     except FileNotFoundError:
         return "File not found."

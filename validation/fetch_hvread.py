@@ -17,16 +17,16 @@ def find_hv_entry(entry):
     try:
         with open(file_path, "r") as file:
             data = json.load(file)
-            print("hello")
 
             # Check if the entry is in the data
             if entry in data:
                 read_data = data[entry]
-
                 print(entry, read_data)
+                print("\n")
 
             else:
                 print(f"Entry {entry} not found in the data.")
+                print("\n")
     except FileNotFoundError:
         return "JSON file not found."
     except json.JSONDecodeError:
