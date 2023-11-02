@@ -2,7 +2,7 @@
 import pysam
 import os
 import matplotlib.pyplot as plt
-from math import sqrt
+from math import sqrt, log
 import pandas as pd
 
 
@@ -25,34 +25,46 @@ def sam_records():
             elif flag > 128:
                 read_type = "read_2"
             sequence = read.query_sequence
-            read_length = read.query_length
+            read_length = int(read.query_length)
+            log_read_length = log(read_length)
+            sqrt_read_length = sqrt(read_length)
             ref = sam_file.get_reference_name(read.reference_id)
             try:
                 alignment_score = read.get_tag("AS")
-                length_adj_score = alignment_score / sqrt(read_length)
+                sqrt_length_adj_score = alignment_score / sqrt(read_length)
+                log_length_adj_score = alignment_score / log(read_length)
                 sam_records.append(
                     [
                         read_id,
                         sequence,
                         alignment_score,
-                        length_adj_score,
+                        sqrt_length_adj_score,
+                        log_length_adj_score,
                         flag,
                         read_type,
+                        read_length,
+                        log_read_length,
+                        sqrt_read_length,
                         ref,
                     ]
                 )
             except:
                 alignment_score = 0
-                length_adj_score = 0
+                sqrt_length_adj_score = 0
+                log_length_adj_score = 0
 
                 sam_records.append(
                     [
                         read_id,
                         sequence,
                         alignment_score,
-                        length_adj_score,
+                        sqrt_length_adj_score,
+                        log_length_adj_score,
                         flag,
                         read_type,
+                        read_length,
+                        log_read_length,
+                        sqrt_read_length,
                         ref,
                     ]
                 )
@@ -62,9 +74,13 @@ def sam_records():
             "read_id",
             "sequence",
             "alignment_score",
-            "length_adj_score",
+            "sqrt_length_adj_score",
+            "log_length_adj_score",
             "flag",
             "read_type",
+            "read_length",
+            "log_read_length",
+            "sqrt_read_length",
             "ref",
         ],
     )
