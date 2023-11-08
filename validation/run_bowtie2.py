@@ -15,20 +15,7 @@ for sample, fastqs in sorted(samples.items()):
     if os.path.exists(out):
         continue
 
-    # cmd = [ # updated settings that were too exlusionary
-    #     "/Users/simongrimm/code/bowtie2-2.5.1-macos-arm64/bowtie2",
-    #     "-x",
-    #     "human-viruses",
-    #     "--very-sensitive",
-    #     "--score-min",
-    #     "L,-0.6,-0.6",
-    #     "--threads",
-    #     "24",
-    #     "-S",
-    #     out,
-    # ]
-
-    cmd = [  # Jeff's settings
+    cmd = [
         "/Users/simongrimm/code/bowtie2-2.5.1-macos-arm64/bowtie2",
         "--local",
         "-x",
