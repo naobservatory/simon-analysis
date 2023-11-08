@@ -19,7 +19,7 @@ def start():
 
     excluded_reads_set = set(dropped_merged + dropped_pair_low_score)
 
-    with open("simon-excluded-read-ids.txt", "w") as outf:
+    with open("excluded-read-ids.txt", "w") as outf:
         for read in excluded_reads_set:
             outf.write(f"{read}\n")
 
