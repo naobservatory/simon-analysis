@@ -24,8 +24,23 @@ def find_sam_entry(entry):
                 sam_entry = str(line.split("\t")[0].strip())
 
                 if sam_entry == entry:
-                    print(line)
-                    print(sams[sams["read_id"] == entry])
+                    # print(line)
+                    filtered_df = sams[sams["read_id"] == entry][
+                        [
+                            "read_id",
+                            "sequence",
+                            "alignment_score",
+                            "sqrt_length_adj_score",
+                            "log_length_adj_score",
+                            "read_type",
+                            "read_length",
+                        ]
+                    ]
+                    for idx, row in filtered_df.iterrows():
+                        for column in filtered_df.columns:
+                            print(f"{column}: {row[column]}")
+                        print("\n")
+                    break
 
     except FileNotFoundError:
         return "File not found."

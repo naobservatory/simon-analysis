@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-if [ -d target_projects_and_samples]; then
+if [ ! -e target_projects_and_samples.json ]; then
     ~/code/simons-public-notebook/validation/return_bioprojects.py
 fi    
 json_file=~/code/simons-public-notebook/validation/target_projects_and_samples.json
@@ -16,16 +16,16 @@ if [ ! -d hvreads ]; then
         done
     done | xargs -P 32 -I {} aws s3 cp {} hvreads/ 
 fi
-# Creating fastq files, based on hvreads. Creates pair1, pair2, and combined fastq files.
+# Creating fastq files, based on hvreads Kraken assignment (first value after each key in *.hvreads.json). Creates pair1, pair2, and combined fastq files.
 if [ ! -d hvfastqs ]; then
     mkdir hvfastqs
     ls hvreads | \
         xargs -P 32 -I {} \
-              ~/code/simons-public-notebook/validation/json_to_fasta.py hvreads hvfastqs {}
+              ~/code/simons-public-notebook/validation/json_to_hv_assignment_fasta.py hvreads hvfastqs {}
 fi
 # Checks all kraken matches in *hvreads.json, returning those that match human viruses, as detailed in ~/code/mgs-pipeline/human-viruses.tsv 
 if [ ! -e observed-human-virus-taxids.txt ]; then
-    ~/code/simons-public-notebook/validation/determine_hv_taxids.py \
+    ~/code/simons-public-notebook/validation/determine_hv_assignment_taxids.py \
         hvreads/ \
         ~/code/mgs-pipeline/human-viruses.tsv \
         observed-human-virus-taxids.txt

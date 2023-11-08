@@ -5,12 +5,6 @@ import json
 
 in_dir, out_dir, in_fname = sys.argv[1:]
 sample = os.path.basename(in_fname).replace(".hvreads.json", "")
-human_viruses = {}
-with open("human-viruses.tsv") as inf:
-    for line in inf:
-        taxid, name = line.strip().split("\t")
-        human_viruses[int(taxid)] = name
-
 
 pair1 = []
 pair2 = []
@@ -19,8 +13,6 @@ combined = []
 with open(os.path.join(in_dir, in_fname)) as inf:
     for seq_id, details in sorted(json.load(inf).items()):
         kraken_assignment, kraken_info, *reads = details
-        if int(kraken_assignment) not in human_viruses:
-            continue
         assert len(reads) in [1, 2]
         if len(reads) == 1:
             (read,) = reads
