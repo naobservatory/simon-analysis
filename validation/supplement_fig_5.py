@@ -28,7 +28,6 @@ def start():
     plt.ylabel("Frequency")
     sns.despine(
             right=True, top=True)
-    #Insert vertical line at score = 22
     plt.axvline(x=22, color="black", linestyle="--")
     plt.savefig("supplement_fig_5.png", dpi=600)
     plt.clf()
