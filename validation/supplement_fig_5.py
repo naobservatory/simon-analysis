@@ -1,10 +1,5 @@
 #!/usr/bin/env python
-import pysam
-import os
-import json
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-from math import sqrt
 import pandas as pd
 import seaborn as sns
 from return_sam_records import sam_records
