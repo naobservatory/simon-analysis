@@ -1,9 +1,19 @@
 #!/usr/bin/env bash
 
+set -e # exit on error 
+
+ROOT_DIR="$PWD"
+if [ "$(basename $PWD)" != "validation" ]; then
+    echo "Must be run from validation directory"
+    exit 1
+fi
+
+
 if [ ! -e target_projects_and_samples.json ]; then
-    ~/code/simons-public-notebook/validation/return_bioprojects.py
-fi    
-json_file=~/code/simons-public-notebook/validation/target_projects_and_samples.json
+    $ROOT_DIR/return_bioprojects.py
+fi  
+
+json_file=$ROOT_DIR/target_projects_and_samples.json
 # creating and populating hvreads directory, based on target_projects_and_samples.json
 if [ ! -d hvreads ]; then
     mkdir hvreads
@@ -21,18 +31,18 @@ if [ ! -d hvfastqs ]; then
     mkdir hvfastqs
     ls hvreads | \
         xargs -P 32 -I {} \
-              ~/code/simons-public-notebook/validation/json_to_hv_assignment_fasta.py hvreads hvfastqs {}
+              $ROOT_DIR/json_to_hv_assignment_fasta.py hvreads hvfastqs {}
 fi
 # Checks all kraken matches in *hvreads.json, returning those that match human viruses, as detailed in ~/code/mgs-pipeline/human-viruses.tsv 
 if [ ! -e observed-human-virus-taxids.txt ]; then
-    ~/code/simons-public-notebook/validation/determine_hv_assignment_taxids.py \
+    $ROOT_DIR/determine_hv_assignment_taxids.py \
         hvreads/ \
-        ~/code/mgs-pipeline/human-viruses.tsv \
-        observed-human-virus-taxids.txt
+        ${ROOT_DIR}/../mgs-pipeline/human-viruses.tsv \
+	observed-human-virus-taxids.txt
 fi
 
 # Creates detailed-taxids.txt, hv_taxid_to_detailed.json, refseq/viral/*, and ncbi-fetch-metadata.txt
-~/code/simons-public-notebook/validation/get_genomes.py
+$ROOT_DIR/get_genomes.py
 
 
 if [ ! -d raw-genomes ]; then
@@ -43,8 +53,8 @@ if [ ! -d raw-genomes ]; then
 fi
 
 if [ ! -e human-viruses.1.bt2 ]; then
-    ~/code/bowtie2-2.5.1-macos-arm64/bowtie2-build \
-        -f \
+        ${ROOT_DIR}/../../bowtie2-2.5.1-macos-arm64/bowtie2-build \
+	-f \
         --threads 32 \
         $(find raw-genomes/ | grep .fna$ | tr '\n' ',') \
         human-viruses
@@ -52,5 +62,5 @@ fi
 
 if [ ! -e hvsams ]; then
     mkdir hvsams
-    ~/code/simons-public-notebook/validation/run_bowtie2.py
+    $ROOT_DIR/run_bowtie2.py
 fi
