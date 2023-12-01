@@ -85,15 +85,20 @@ def get_arrivals(day, month):
 
 
 def plot_flight_origins():
+    # https://simplemaps.com/static/data/world-cities/basic/simplemaps_worldcities_basicv1.76.zip
     cities_data = pd.read_csv("worldcities.csv")
     cities = cities_data["city_ascii"].values
+
     unknown_counts = defaultdict(int)
     total_origin_counts = defaultdict(int)
+
     day_range = range(1, 10)
     plot_size = round(sqrt(len(day_range)))
+
     fig, axs = plt.subplots(plot_size, plot_size, figsize=(10, 10))
     axs = axs.flatten()
     colors = lambda i: plt.colormaps["tab20"](i / 16)
+
     MONTH = 11  # November
     for day, ax in zip(day_range, axs):
         flight_data_path = get_arrivals(day, MONTH)

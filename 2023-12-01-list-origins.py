@@ -44,7 +44,6 @@ def plot_flight_origins():
                         origin_city = line.split(",")[1]
 
                     arrivals_dict[origin_city] += 1
-    # sort arrivals_dict by value
 
     with open("arrivals.tsv", "w") as tsv:
         for key, value in arrivals_dict.items():

@@ -84,10 +84,13 @@ def get_arrivals(day, month):
 
 
 def extract_flight_origin_data():
+    # https://simplemaps.com/static/data/world-cities/basic/simplemaps_worldcities_basicv1.76.zip
     cities_data = pd.read_csv("worldcities.csv")
     cities = cities_data["city_ascii"].values
+
     unknown_counts = defaultdict(int)
     total_origin_counts = defaultdict(int)
+
     month_range = range(4, 13)
     day_range = range(1, 32)
     for month in month_range:
@@ -118,7 +121,6 @@ def extract_flight_origin_data():
                     ][["admin_name"]].values[0][0]
                     total_origin_counts[administrative_area] += 1
 
-    # Writing unknown and total origin counts to TSV files
     with open("unassigned_cities.tsv", "w") as f:
         for k, v in unknown_counts.items():
             f.write(f"{k}\t{v}\n")
