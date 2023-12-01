@@ -129,10 +129,11 @@ def plot_flight_origins():
 
         new_index = df.index.max() + 1
         CUT_OFF = 15
-        sum_lower_locations = sum(df["count"][CUT_OFF:])
 
         df = df[:CUT_OFF]
-        df.loc[new_index] = ["Other", sum_lower_locations]
+        # sum_lower_locations = sum(df["count"][CUT_OFF:])
+
+        # df.loc[new_index] = ["Other", sum_lower_locations]
         x = range(len(df["location"]))
 
         ax.bar(x, df["count"])
@@ -151,7 +152,6 @@ def plot_flight_origins():
 
     fig.tight_layout()
     fig.subplots_adjust(bottom=0.2)
-
     plt.legend(
         handles,
         labels,
