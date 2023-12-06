@@ -75,6 +75,7 @@ def get_arrivals(day, month):
 def get_state_code_dict():
     state_code_dict = {}
     with open("state_code_to_name.tsv", mode="r", encoding="utf-8") as file:
+        # source: https://docs.google.com/spreadsheets/d/1wU-Ibw9lOplcBMbCbfhgz3GeDx10yZ7iCQY1uHcMu88/edit#gid=0
         # skip first line which contains source
         next(file)
         csv_reader = csv.DictReader(file, delimiter="\t")
