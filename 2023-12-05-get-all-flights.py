@@ -88,6 +88,9 @@ def get_airport_codes():
     non_us_codes = defaultdict(tuple)
     us_codes = defaultdict(tuple)
     with open(
+        # source: https://docs.google.com/spreadsheets/u/1/d/1eepIWOHicQsLyZsb0mSXGPTXDp3vlql-aGuy1AWJED0/htmlview#
+        # TODO: Use official IATA data, this sheet has a couple of mistakes
+        # that I have to account for below
         "Airport Codes by Country - Airport Codes List .tsv",
         mode="r",
         encoding="utf-8",
