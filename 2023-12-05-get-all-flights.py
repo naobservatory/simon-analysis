@@ -7,64 +7,51 @@ from collections import defaultdict
 
 from datetime import datetime, date
 
-cities_not_in_worldcities = {
-    "Provincetown": "Massachusetts",
-    "Bar Harbor": "Maine",
-    "Raleigh/Durham": "North Carolina",
-    "Martha's Vineyard": "Massachusetts",
-    "Bedford/Hanscom": "Massachusetts",
-    "Saranac Lake": "New York",
-    "Dulles": "Virginia",
-    "Westchester County": "New York",
-    "Hyannis": "Massachusetts",
-    "Saint Louis": "Missouri",
-    "Farmingdale": "New York",
-    "Belmar": "New Jersey",
-    "Pellston": "Michigan",
-    "Greensboro/High Point": "North Carolina",
-    "Latrobe": "Pennsylvania",
-    "Teterboro": "New Jersey",
-    "Stowe": "Vermont",
-    "Westhampton Beach": "New York",
-    "Page": "Arizona",
-    "Selinsgrove": "Pennsylvania",
-    "Hilton Head": "South Carolina",
-    "Eastport": "Maine",
-    "Salisbury-Ocean City": "Maryland",
-    "Dillon": "Montana",
-    "Placida": "Florida",
-    "Laporte": "Indiana",
-    "Saint Paul": "Minnesota",
-    "Farmville": "Virginia",
-    "Saint Augustine": "Florida",
-    "Mt Vernon": "Illinois",
-    "Fishers Island": "New York",
-    "Aspen": "Colorado",
-    "Ocean Reef": "Florida",
-    "Montauk Point": "New York",
-    "Wiscasset": "Maine",
-    "Port Clinton": "Ohio",
-    "Manteo": "North Carolina",
-    "Islesboro": "Maine",
-    "Houlton": "Maine",
-    "Currituck": "North Carolina",
-    "Lake Placid": "New York",
-    "Block Island": "Rhode Island",
-    "Rangeley": "Maine",
-    "Reedsville": "Pennsylvania",
-    "Kailua-Kona": "Hawaii",
-    "Edenton": "North Carolina",
-    "Millinocket": "Maine",
-    "Winnsboro": "Louisiana",
-    "Great Barrington": "Massachusetts",
-    "Blue Bell": "Pennsylvania",
-    "Kayenta": "Arizona",
-    "Bristol, VA/Johnson City/Kingsport": "Virginia",
-    "Mount Pocono": "Pennsylvania",
-    "Waller County": "Texas",
-    "Thomson": "Georgia",
-    "Saint Thomas": "Virgin Islands",
-    "Lorain/Elyria": "Ohio",
+airports_not_in_sheet = {
+    "MCO": "FL",
+    "BHB": "ME",
+    "PVC": "MA",
+    "TEB": "NJ",
+    "RUT": "VT",
+    "MSS": "NY",
+    "SLK": "NY",
+    "STI": "Dominican Republic",
+    "BED": "MA",
+    "PSM": "NH",
+    "FOK": "NY",
+    "FRG": "NY",
+    "MMU": "NJ",
+    "PWK": "IL",
+    "BLM": "NJ",
+    "PLS": "Turks and Caicos Islands",
+    "LCI": "NH",
+    "BVY": "MA",
+    "OPF": "FL",
+    "OXC": "CT",
+    "OWD": "MA",
+    "BCT": "FL",
+    "VNY": "CA",
+    "CGF": "OH",
+    "PDK": "GA",
+    "KJZI": "SC",
+    "PTK": "MI",
+    "KOQU": "RI",
+    "PSF": "MA",
+    "ILG": "DE",
+    "5B2": "NY",
+    "NHZ": "ME",
+    "APA": "CO",
+    "AGC": "PA",
+    "LUK": "OH",
+    "CTH": "PA",
+    "PNE": "PA",
+    "MVL": "VT",
+    "MTN": "MD",
+    "CDW": "NJ",
+    "ESN": "MD",
+    "EWB": "MA",
+    "SUA": "FL",
+    "JPX": "NY",
 }
 
 
@@ -85,57 +72,110 @@ def get_arrivals(day, month):
     return flight_data_path
 
 
-def get_duplicated_cities():
-    world_city_df = pd.read_csv("worldcities.csv")
+def get_state_code_dict():
+    state_code_dict = {}
+    with open("state_code_to_name.tsv", mode="r", encoding="utf-8") as file:
+        # skip first line which contains source
+        next(file)
+        csv_reader = csv.DictReader(file, delimiter="\t")
+        for row in csv_reader:
+            state_code_dict[row["state_code"]] = row["state_name"]
+    return state_code_dict
 
-    duplicated_cities = []
-    us_duplicated_cities = []
-    city_counts = world_city_df["city_ascii"].value_counts()
-    duplicated_cities = city_counts[city_counts > 1].index.tolist()
 
-    us_entries = world_city_df[world_city_df["country"] == "United States"]
-    city_admin_counts = us_entries.groupby(["city_ascii", "admin_name"]).size()
-    us_duplicated_cities = city_admin_counts[
-        city_admin_counts > 1
-    ].index.tolist()
+def get_airport_codes():
+    non_us_codes = defaultdict(tuple)
+    us_codes = defaultdict(tuple)
+    with open(
+        "Airport Codes by Country - Airport Codes List .tsv",
+        mode="r",
+        encoding="utf-8",
+    ) as file:
+        csv_reader = csv.DictReader(file, delimiter="\t")
+        for row in csv_reader:
+            fine_location, location, airport_code = (
+                row["City"],
+                row["Country "],  # note the space at the end of the key
+                row["Code"],
+            )
+            if location == "USA":
+                try:
+                    if airport_code == "DCA":
+                        city = "Washington"
+                        state = "DC"
+                    elif airport_code == "SFO":
+                        city = "San Francisco"
+                        state = "CA"
+                    elif airport_code == "IAD":
+                        city = "Washington"
+                        state = "VA"
+                    elif airport_code == "BWI":
+                        city = "Baltimore"
+                        state = "MD"
+                    elif airport_code == "ATL":
+                        city = "Atlanta"
+                        state = "GA"
+                    elif airport_code == "BUF":
+                        city = "Buffalo"
+                        state = "NY"
+                    elif airport_code == "SJU":
+                        city = "San Juan"
+                        state = "PR"
+                    elif airport_code == "IAG":
+                        city = "Niagara Falls"
+                        state = "NY"
+                    elif airport_code == "TRI":
+                        city = "Blountville"
+                        state = "TN"
+                    else:
+                        bits = fine_location.split(", ")
+                        city = bits[0]
+                        state = bits[-1]
+                        state = state.split(" ")[0]
+                except:
+                    print(fine_location)
+                    continue
+                us_codes[airport_code] = state
+                continue
+            else:
+                if airport_code == "SJU":
+                    city = "San Juan"
+                    state = "PR"
+                    us_codes[airport_code] = state
+                    continue
+                if "," in location:
+                    country = location.split(", ")[1]
+                else:
+                    country = location
+                non_us_codes[airport_code] = country
 
-    return duplicated_cities, us_duplicated_cities
+    return us_codes, non_us_codes
 
 
 def get_flight_duration():
-    duplicated_cities, us_duplicated_cities = get_duplicated_cities()
-    city_info = defaultdict(tuple)
-    us_city_info = defaultdict(tuple)
-    us_cities = set()
-    with open("worldcities.csv", mode="r", encoding="utf-8") as file:
-        csv_reader = csv.DictReader(file)
-        for row in csv_reader:
-            city_info[row["city_ascii"]] = (row["admin_name"], row["country"])
-            if row["country"] == "United States":
-                us_cities.add(row["city_ascii"])
-                us_city_info[row["city_ascii"]] = (
-                    row["admin_name"],
-                    row["country"],
-                )
-
-    print(us_city_info)
+    us_codes, non_us_codes = get_airport_codes()
+    state_code_dict = get_state_code_dict()
+    if "LHR" in non_us_codes:
+        print("LHR in non_us_codes")
+    else:
+        print("LHR not in non_us_codes")
     month_range = range(4, 13)
     day_range = range(1, 32)
 
     headers = [
         "Origin",
+        "Origin Code",
         "Date",
         "Terminal",
         "Equipment",
         "Flight",
         "Airline",
-        "State",
         "Nation",
+        "State",
         "Flight Time",
     ]
 
-    dropped_cities = defaultdict(int)
-
+    missing_airport_codes = defaultdict(int)
     total_origin_counts = defaultdict(int)
 
     with open("all_flights.tsv", "w", newline="") as outf:
@@ -155,120 +195,102 @@ def get_flight_duration():
                 try:
                     flight_data_path = get_arrivals(day, month)
                 except:
+                    print(f"no data for {month}-{day}")
                     continue
 
                 with open(flight_data_path, newline="") as csvfile:
-                    reader = csv.reader(csvfile)
-                    headers = next(reader)
-                    origin_index = headers.index("Origin")
-                    departure_time_index = headers.index(
-                        "Departure Time"
-                    )  # HH:MM
-                    arrival_time_index = headers.index("Arrival Time")  # HH:MM
-                    departure_date_index = headers.index(
-                        "Departure Date"
-                    )  # YYYY-MM-DD
-                    arrival_date_index = headers.index(
-                        "Arrival Date"
-                    )  # YYYY-MM-DD
-                    terminal_index = headers.index("Terminal")
-                    equipment_index = headers.index("Equipment")
-                    flight_index = headers.index("Flight")
-                    airline_index = headers.index("Airline")
-
+                    reader = csv.DictReader(csvfile)
                     for row in reader:
-                        origin = row[origin_index]
-                        dep_time_str = row[departure_time_index]
-                        arr_time_str = row[arrival_time_index]
-                        dep_date_str = row[departure_date_index]
-                        arr_date_str = row[arrival_date_index]
-                        terminal = row[terminal_index]
-                        equipment = row[equipment_index]
-                        flight = row[flight_index]
-                        airline = row[airline_index]
+                        origin = row["Origin"]
+                        airport_code = row["Origin Code"]
+                        dep_time = row["Departure Time"]
+                        arr_time = row["Arrival Time"]
+                        dep_date = row["Departure Date"]
+                        arr_date = row["Arrival Date"]
+                        terminal = row["Terminal"]
+                        equipment = row["Flight"]
+                        flight = row["Flight"]
+                        airline = row["Airline"]
 
-                        if not arr_time_str:
-                            print("Flight en route or cancelled")
-                            print(row)
+                        if not arr_time:
+                            # print("Flight en route or cancelled")
+                            # print(row)
                             continue
                         departure_datetime = datetime.strptime(
-                            f"{dep_date_str} {dep_time_str}", "%Y-%m-%d %H:%M"
+                            f"{dep_date} {dep_time}", "%Y-%m-%d %H:%M"
                         )
                         arrival_datetime = datetime.strptime(
-                            f"{arr_date_str} {arr_time_str}", "%Y-%m-%d %H:%M"
+                            f"{arr_date} {arr_time}", "%Y-%m-%d %H:%M"
                         )
 
                         flight_time = arrival_datetime - departure_datetime
-                        if origin in city_info:
-                            if (
-                                origin in duplicated_cities
-                                and origin not in us_cities
-                            ):
-                                print(
-                                    f"{origin}] appears twice in world_cities and is not in the US. Dropping entry"
-                                )
-                                print(row)
-                                dropped_cities[origin] += 1
-                                continue
-                            elif (
-                                origin in duplicated_cities
-                                and origin in us_cities
-                                and origin in us_duplicated_cities
-                            ):
-                                print(
-                                    f"{origin}City exists twice in the US. Location not resolvable, dropping entry"
-                                )
-                                print(row)
-                                dropped_cities[origin] += 1
-                                continue
-                            elif (
-                                origin in duplicated_cities
-                                and origin in us_cities
-                                and not origin in us_duplicated_cities
-                            ):
-                                state, nation = us_city_info[origin]
-
-                            else:
-                                state, nation = city_info[origin]
-
-                            writer.writerow(
-                                [
-                                    origin,
-                                    arr_date_str,
-                                    terminal,
-                                    equipment,
-                                    flight,
-                                    airline,
-                                    state,
-                                    nation,
-                                    flight_time,
-                                ]
-                            )
-                        else:
+                        if airport_code in us_codes:
+                            location = us_codes[airport_code]
+                            if location == "La":
+                                location = "LA"
                             try:
-                                nation = "United States"
-                                state = cities_not_in_worldcities[origin]
-                                writer.writerow(
-                                    [
-                                        origin,
-                                        arr_date_str,
-                                        terminal,
-                                        equipment,
-                                        flight,
-                                        airline,
-                                        state,
-                                        nation,
-                                        flight_time,
-                                    ]
-                                )
-                            except KeyError:
-                                print(
-                                    f"{origin} not in worldcities or cities_not_in_worldcities"
-                                )
+                                state = state_code_dict[location]
+                            except:
+                                print(f"{location} not in state_code_dict")
                                 print(row)
-                                dropped_cities[origin] += 1
+                                state = "N/A"
+                            total_origin_counts[state] += 1
+                            country = "United States"
+                        elif airport_code in non_us_codes:
+                            location = non_us_codes[airport_code]
+                            total_origin_counts[location] += 1
+                            country = location
+                            state = "N/A"
+                        elif (
+                            airport_code not in us_codes
+                            and airport_code not in non_us_codes
+                        ):
+                            try:
+                                location = airports_not_in_sheet[airport_code]
+                                if location == "Dominican Republic":
+                                    country = "Dominican Republic"
+                                    state = "N/A"
+                                    total_origin_counts[country] += 1
+                                elif location == "Turks and Caicos Islands":
+                                    country = "Turks and Caicos Islands"
+                                    state = "N/A"
+                                    total_origin_counts[country] += 1
+                                else:
+                                    country = "United States"
+                                    state = state_code_dict[location]
+                                    total_origin_counts[state] += 1
+                            except:
+                                print(
+                                    f"Airport code {airport_code} not covered"
+                                )
+                                missing_airport_codes[airport_code] += 1
                                 continue
-    print(dropped_cities)
+
+                        writer.writerow(
+                            [
+                                origin,
+                                airport_code,
+                                arr_date,
+                                terminal,
+                                equipment,
+                                flight,
+                                airline,
+                                country,
+                                state,
+                                flight_time,
+                            ]
+                        )
+    with open("total_origin_counts.tsv", "w") as f:
+        for location, flight_count in total_origin_counts.items():
+            f.write(f"{location}\t{flight_count}\n")
+    missing_airport_codes = dict(
+        sorted(
+            missing_airport_codes.items(),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+    )
+    print(missing_airport_codes)
 
 
 def start():
