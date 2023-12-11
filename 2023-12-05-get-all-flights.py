@@ -55,6 +55,10 @@ airports_not_in_sheet = {
 }
 
 
+def time_to_float(t):
+    return t.hour + t.minute / 60 + t.second / 3600
+
+
 def get_arrivals(day, month):
     if not os.path.exists("flight_data"):
         os.makedirs("flight_data")
@@ -156,7 +160,7 @@ def get_airport_codes():
     return us_codes, non_us_codes
 
 
-def get_flight_duration():
+def create_all_flights_tsv():
     us_codes, non_us_codes = get_airport_codes()
     state_code_dict = get_state_code_dict()
     if "LHR" in non_us_codes:
@@ -181,6 +185,7 @@ def get_flight_duration():
 
     missing_airport_codes = defaultdict(int)
     total_origin_counts = defaultdict(int)
+    total_hour_counts = defaultdict(int)
 
     with open("all_flights.tsv", "w", newline="") as outf:
         writer = csv.writer(outf, delimiter="\t", lineterminator="\n")
@@ -212,7 +217,7 @@ def get_flight_duration():
                         dep_date = row["Departure Date"]
                         arr_date = row["Arrival Date"]
                         terminal = row["Terminal"]
-                        equipment = row["Flight"]
+                        equipment = row["Equipment"]
                         flight = row["Flight"]
                         airline = row["Airline"]
 
@@ -270,6 +275,14 @@ def get_flight_duration():
                                 missing_airport_codes[airport_code] += 1
                                 continue
 
+                        if country == "United States":
+                            hours = flight_time.seconds / 3600
+                            # turn hour into a float
+                            total_hour_counts[state] += round(hours)
+                        else:
+                            hours = flight_time.seconds / 3600
+                            total_hour_counts[country] += round(hours)
+
                         writer.writerow(
                             [
                                 origin,
@@ -287,6 +300,11 @@ def get_flight_duration():
     with open("total_origin_counts.tsv", "w") as f:
         for location, flight_count in total_origin_counts.items():
             f.write(f"{location}\t{flight_count}\n")
+
+    with open("total_hour_counts.tsv", "w") as f:
+        for location, flight_time in total_hour_counts.items():
+            f.write(f"{location}\t{flight_time}\n")
+
     missing_airport_codes = dict(
         sorted(
             missing_airport_codes.items(),
@@ -298,7 +316,7 @@ def get_flight_duration():
 
 
 def start():
-    get_flight_duration()
+    create_all_flights_tsv()
 
 
 if __name__ == "__main__":
