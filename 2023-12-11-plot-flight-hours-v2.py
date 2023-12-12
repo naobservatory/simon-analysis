@@ -50,6 +50,8 @@ def return_plotting_df():
 
     df["Flight Hours"] = df["Flight Time"].apply(lambda x: time_to_float(x))
 
+    df = df[df["Terminal"].isin(["A", "B", "C", "E"])]
+
     df = (
         df.groupby(["Plotting Origin"])
         .agg({"Flight Hours": "sum"})
