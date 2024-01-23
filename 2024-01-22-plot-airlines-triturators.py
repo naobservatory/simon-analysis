@@ -28,20 +28,22 @@ def return_flights():
             origin, origin_code, date, terminal, equipment, flight, airline, nation, state, flight_time = line.split("\t")
             airlines = ast.literal_eval(airline) 
             prime_airline = airlines[0]
-            if prime_airline in [
+            if nation == "Canada": 
+                triturator_status = "Unknown"
+            elif prime_airline in [
                 "United Airlines",
                 "American Airlines",
                 "Delta Air Lines",]:
-                triturator_status = "aa_triturator"
+                triturator_status = "American Airlines\nTriturator"
 
             elif prime_airline == "JetBlue Airways":
-                    triturator_status = "pr_triturator"
+                triturator_status = "Swissport\nTriturator"
 
             elif nation != "United States":
-                triturator_status = "pr_triturator"
+                triturator_status = "Swissport\nTriturator"
         
             else:
-                triturator_status = "unknown"
+                triturator_status = "Unknown"
             
             us_flights.append([origin, origin_code, date, terminal, equipment, flight, airline, nation, state, flight_time, prime_airline, triturator_status])
 
@@ -85,7 +87,8 @@ def return_destination_trit_plot():
     df.plot.barh(stacked=True, ax=ax, width=0.8)
 
     
-
+    # drop title of legend box
+    ax.legend().set_title("")
     ax.spines["right"].set_visible(False)
     ax.spines["top"].set_visible(False)
     plt.tick_params(axis="y", which="both", left=False, right=False)

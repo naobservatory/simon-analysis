@@ -28,7 +28,9 @@ def return_flights():
             origin, origin_code, date, terminal, equipment, flight, airline, nation, state, flight_time = line.split("\t")
             airlines = ast.literal_eval(airline) 
             prime_airline = airlines[0]
-            if prime_airline in [
+            if nation == "Canada":
+                triturator_status = "unknown"
+            elif prime_airline in [
                 "United Airlines",
                 "American Airlines",
                 "Delta Air Lines",]:
@@ -56,8 +58,8 @@ def return_plotting_df():
     df = return_flights()
 
     nicer_trit_labels = {
-        "aa_triturator": "AA Triturator",
-        "pr_triturator": "Swissport Triturator",
+        "aa_triturator": "American Airlines \nTriturator",
+        "pr_triturator": "Swissport\nTriturator",
         "unknown": "Unknown",
     }
     df = df.replace({"Triturator Status": nicer_trit_labels})
