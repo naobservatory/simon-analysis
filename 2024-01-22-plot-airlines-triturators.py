@@ -28,15 +28,17 @@ def return_flights():
             origin, origin_code, date, terminal, equipment, flight, airline, nation, state, flight_time = line.split("\t")
             airlines = ast.literal_eval(airline) 
             prime_airline = airlines[0]
-            if nation == "Canada": 
+            if nation == "Canada":
                 triturator_status = "Unknown"
             elif prime_airline in [
                 "United Airlines",
-                "American Airlines",
-                "Delta Air Lines",]:
+                    "American Airlines"]:
                 triturator_status = "American Airlines\nTriturator"
 
-            elif prime_airline == "JetBlue Airways":
+            elif prime_airline in [
+                "JetBlue Airways",
+                "Delta Air Lines",
+                    "Southwest Airlines"]:
                 triturator_status = "Swissport\nTriturator"
 
             elif nation != "United States":
@@ -44,6 +46,7 @@ def return_flights():
         
             else:
                 triturator_status = "Unknown"
+ 
             
             us_flights.append([origin, origin_code, date, terminal, equipment, flight, airline, nation, state, flight_time, prime_airline, triturator_status])
 

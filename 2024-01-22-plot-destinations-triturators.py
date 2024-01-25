@@ -32,19 +32,21 @@ def return_flights():
                 triturator_status = "Unknown"
             elif prime_airline in [
                 "United Airlines",
-                "American Airlines",
-                "Delta Air Lines",]:
+                "American Airlines"]:
                 triturator_status = "American Airlines\nTriturator"
 
-            elif prime_airline == "JetBlue Airways":
-                    triturator_status = "Swissport\nTriturator"
+            elif prime_airline in [
+                "JetBlue Airways",
+                "Delta Air Lines",
+                    "Southwest Airlines"]:
+                triturator_status = "Swissport\nTriturator"
 
             elif nation != "United States":
                 triturator_status = "Swissport\nTriturator"
         
             else:
                 triturator_status = "Unknown"
-            
+ 
             us_flights.append([origin, origin_code, date, terminal, equipment, flight, airline, nation, state, flight_time, triturator_status])
 
         us_flights_df = pd.DataFrame(us_flights)
