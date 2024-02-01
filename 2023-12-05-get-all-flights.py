@@ -165,7 +165,7 @@ def create_all_flights_tsv():
     state_code_dict = get_state_code_dict()
     month_range = range(1, 13)
     day_range = range(1, 32)
-    years = [2023,2024]
+    years = [2023, 2024]
     headers = [
         "Origin",
         "Origin Code",
@@ -186,18 +186,18 @@ def create_all_flights_tsv():
     with open("all_flights.tsv", "w", newline="") as outf:
         writer = csv.writer(outf, delimiter="\t", lineterminator="\n")
         writer.writerow(headers)
-        for year in years: 
+        for year in years:
             for month in month_range:
-                for day in day_range: 
-                    if month == 2 and day > 28: 
+                for day in day_range:
+                    if month == 2 and day > 28:
                         continue
                     if month in [4, 6, 9, 11] and day == 31:
                         continue
                     if date(year, month, day) < date(2023, 4, 17):
-                        print("skipping", date(year, month, day)) 
+                        print("skipping", date(year, month, day))
                         continue
                         # first entry is from 2023-04-17
-                    print(date(year, month, day)) 
+                    print(date(year, month, day))
                     today = date.today()
                     if today < date(year, month, day):
                         break
@@ -253,12 +253,16 @@ def create_all_flights_tsv():
                                 and airport_code not in non_us_codes
                             ):
                                 try:
-                                    location = airports_not_in_sheet[airport_code]
+                                    location = airports_not_in_sheet[
+                                        airport_code
+                                    ]
                                     if location == "Dominican Republic":
                                         country = "Dominican Republic"
                                         state = "N/A"
                                         total_origin_counts[country] += 1
-                                    elif location == "Turks and Caicos Islands":
+                                    elif (
+                                        location == "Turks and Caicos Islands"
+                                    ):
                                         country = "Turks and Caicos Islands"
                                         state = "N/A"
                                         total_origin_counts[country] += 1
