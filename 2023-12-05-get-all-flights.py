@@ -59,17 +59,17 @@ def time_to_float(t):
     return t.hour + t.minute / 60 + t.second / 3600
 
 
-def get_arrivals(day, month):
+def get_arrivals(day, month, year):
     if not os.path.exists("flight_data"):
         os.makedirs("flight_data")
-    flight_data_path = f"flight_data/2023-{month:02d}-{day:02d}.csv"
+    flight_data_path = f"flight_data/{year}-{month:02d}-{day:02d}.csv"
     if not os.path.exists(flight_data_path):
         subprocess.check_call(
             [
                 "aws",
                 "s3",
                 "cp",
-                f"s3://nao-bostraffic/Data/Arrivals/2023-{month:02d}-{day:02d}_BOS_Arrivals.csv",
+                f"s3://nao-bostraffic/Data/Arrivals/{year}-{month:02d}-{day:02d}_BOS_Arrivals.csv",
                 flight_data_path,
             ]
         )
@@ -163,13 +163,9 @@ def get_airport_codes():
 def create_all_flights_tsv():
     us_codes, non_us_codes = get_airport_codes()
     state_code_dict = get_state_code_dict()
-    if "LHR" in non_us_codes:
-        print("LHR in non_us_codes")
-    else:
-        print("LHR not in non_us_codes")
-    month_range = range(4, 13)
+    month_range = range(1, 13)
     day_range = range(1, 32)
-
+    years = [2023,2024]
     headers = [
         "Origin",
         "Origin Code",
@@ -190,113 +186,115 @@ def create_all_flights_tsv():
     with open("all_flights.tsv", "w", newline="") as outf:
         writer = csv.writer(outf, delimiter="\t", lineterminator="\n")
         writer.writerow(headers)
-        for month in month_range:
-            for day in day_range:
-                if month in [4, 6, 9, 11] and day == 31:
-                    continue
-                if date(2023, month, day) < date(2023, 4, 17):
-                    continue
-                    # first entry is from 2023-04-17
-                today = date.today()
-                if today < date(2023, month, day):
-                    break
+        for year in years: 
+            for month in month_range:
+                for day in day_range: 
+                    if month == 2 and day > 28: 
+                        continue
+                    if month in [4, 6, 9, 11] and day == 31:
+                        continue
+                    if date(year, month, day) < date(2023, 4, 17):
+                        print("skipping", date(year, month, day)) 
+                        continue
+                        # first entry is from 2023-04-17
+                    print(date(year, month, day)) 
+                    today = date.today()
+                    if today < date(year, month, day):
+                        break
+                    try:
+                        flight_data_path = get_arrivals(day, month, year)
+                    except:
+                        print(f"no data for {year}-{month}-{day}")
+                        continue
 
-                try:
-                    flight_data_path = get_arrivals(day, month)
-                except:
-                    print(f"no data for {month}-{day}")
-                    continue
+                    with open(flight_data_path, newline="") as csvfile:
+                        reader = csv.DictReader(csvfile)
+                        for row in reader:
+                            origin = row["Origin"]
+                            airport_code = row["Origin Code"]
+                            dep_time = row["Departure Time"]
+                            arr_time = row["Arrival Time"]
+                            dep_date = row["Departure Date"]
+                            arr_date = row["Arrival Date"]
+                            terminal = row["Terminal"]
+                            equipment = row["Equipment"]
+                            flight = row["Flight"]
+                            airline = row["Airline"]
 
-                with open(flight_data_path, newline="") as csvfile:
-                    reader = csv.DictReader(csvfile)
-                    for row in reader:
-                        origin = row["Origin"]
-                        airport_code = row["Origin Code"]
-                        dep_time = row["Departure Time"]
-                        arr_time = row["Arrival Time"]
-                        dep_date = row["Departure Date"]
-                        arr_date = row["Arrival Date"]
-                        terminal = row["Terminal"]
-                        equipment = row["Equipment"]
-                        flight = row["Flight"]
-                        airline = row["Airline"]
-
-                        if not arr_time:
-                            # print("Flight en route or cancelled")
-                            # print(row)
-                            continue
-                        departure_datetime = datetime.strptime(
-                            f"{dep_date} {dep_time}", "%Y-%m-%d %H:%M"
-                        )
-                        arrival_datetime = datetime.strptime(
-                            f"{arr_date} {arr_time}", "%Y-%m-%d %H:%M"
-                        )
-
-                        flight_time = arrival_datetime - departure_datetime
-                        if airport_code in us_codes:
-                            location = us_codes[airport_code]
-                            if location == "La":
-                                location = "LA"
-                            try:
-                                state = state_code_dict[location]
-                            except:
-                                print(f"{location} not in state_code_dict")
-                                print(row)
-                                state = "N/A"
-                            total_origin_counts[state] += 1
-                            country = "United States"
-                        elif airport_code in non_us_codes:
-                            location = non_us_codes[airport_code]
-                            total_origin_counts[location] += 1
-                            country = location
-                            state = "N/A"
-                        elif (
-                            airport_code not in us_codes
-                            and airport_code not in non_us_codes
-                        ):
-                            try:
-                                location = airports_not_in_sheet[airport_code]
-                                if location == "Dominican Republic":
-                                    country = "Dominican Republic"
-                                    state = "N/A"
-                                    total_origin_counts[country] += 1
-                                elif location == "Turks and Caicos Islands":
-                                    country = "Turks and Caicos Islands"
-                                    state = "N/A"
-                                    total_origin_counts[country] += 1
-                                else:
-                                    country = "United States"
-                                    state = state_code_dict[location]
-                                    total_origin_counts[state] += 1
-                            except:
-                                print(
-                                    f"Airport code {airport_code} not covered"
-                                )
-                                missing_airport_codes[airport_code] += 1
+                            if not arr_time:
                                 continue
+                            departure_datetime = datetime.strptime(
+                                f"{dep_date} {dep_time}", "%Y-%m-%d %H:%M"
+                            )
+                            arrival_datetime = datetime.strptime(
+                                f"{arr_date} {arr_time}", "%Y-%m-%d %H:%M"
+                            )
 
-                        if country == "United States":
-                            hours = flight_time.seconds / 3600
-                            # turn hour into a float
-                            total_hour_counts[state] += round(hours)
-                        else:
-                            hours = flight_time.seconds / 3600
-                            total_hour_counts[country] += round(hours)
+                            flight_time = arrival_datetime - departure_datetime
+                            if airport_code in us_codes:
+                                location = us_codes[airport_code]
+                                if location == "La":
+                                    location = "LA"
+                                try:
+                                    state = state_code_dict[location]
+                                except:
+                                    print(f"{location} not in state_code_dict")
+                                    print(row)
+                                    state = "N/A"
+                                total_origin_counts[state] += 1
+                                country = "United States"
+                            elif airport_code in non_us_codes:
+                                location = non_us_codes[airport_code]
+                                total_origin_counts[location] += 1
+                                country = location
+                                state = "N/A"
+                            elif (
+                                airport_code not in us_codes
+                                and airport_code not in non_us_codes
+                            ):
+                                try:
+                                    location = airports_not_in_sheet[airport_code]
+                                    if location == "Dominican Republic":
+                                        country = "Dominican Republic"
+                                        state = "N/A"
+                                        total_origin_counts[country] += 1
+                                    elif location == "Turks and Caicos Islands":
+                                        country = "Turks and Caicos Islands"
+                                        state = "N/A"
+                                        total_origin_counts[country] += 1
+                                    else:
+                                        country = "United States"
+                                        state = state_code_dict[location]
+                                        total_origin_counts[state] += 1
+                                except:
+                                    print(
+                                        f"Airport code {airport_code} not covered"
+                                    )
+                                    missing_airport_codes[airport_code] += 1
+                                    continue
 
-                        writer.writerow(
-                            [
-                                origin,
-                                airport_code,
-                                arr_date,
-                                terminal,
-                                equipment,
-                                flight,
-                                airline,
-                                country,
-                                state,
-                                flight_time,
-                            ]
-                        )
+                            if country == "United States":
+                                hours = flight_time.seconds / 3600
+                                # turn hour into a float
+                                total_hour_counts[state] += round(hours)
+                            else:
+                                hours = flight_time.seconds / 3600
+                                total_hour_counts[country] += round(hours)
+
+                            writer.writerow(
+                                [
+                                    origin,
+                                    airport_code,
+                                    arr_date,
+                                    terminal,
+                                    equipment,
+                                    flight,
+                                    airline,
+                                    country,
+                                    state,
+                                    flight_time,
+                                ]
+                            )
     with open("total_origin_counts.tsv", "w") as f:
         for location, flight_count in total_origin_counts.items():
             f.write(f"{location}\t{flight_count}\n")
