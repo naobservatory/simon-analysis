@@ -8,7 +8,8 @@ import matplotlib.pyplot as plt
 from datetime import datetime, date
 from zoneinfo import ZoneInfo
 import re
-airports_not_in_sheet = { # Fix missing airport codes
+
+airports_not_in_sheet = {  # Fix missing airport codes
     "MCO": "FL",
     "BHB": "ME",
     "PVC": "MA",
@@ -55,6 +56,7 @@ airports_not_in_sheet = { # Fix missing airport codes
     "JPX": "NY",
 }
 
+
 def get_time_zones():
     time_zone_dict = {}
     with open("time_zones.csv", mode="r", encoding="utf-8") as file:
@@ -62,6 +64,7 @@ def get_time_zones():
             location, time_zone = line.split(",")
             time_zone_dict[location] = time_zone.strip()
     return time_zone_dict
+
 
 def time_to_float(t):
     return t.hour + t.minute / 60 + t.second / 3600
@@ -149,7 +152,6 @@ def get_airport_codes():
                         state = bits[-1]
                         state = state.split(" ")[0]
                 except:
-                    print(fine_location)
                     continue
                 us_codes[airport_code] = state
                 continue
@@ -171,8 +173,7 @@ def get_airport_codes():
 def create_all_flights_tsv():
     us_codes, non_us_codes = get_airport_codes()
     state_code_dict = get_state_code_dict()
-    time_zone_dict = get_time_zones() 
-
+    time_zone_dict = get_time_zones()
 
     month_range = range(1, 13)
     day_range = range(1, 32)
@@ -189,14 +190,13 @@ def create_all_flights_tsv():
         "State",
         "Flight Time",
     ]
-
     missing_airport_codes = defaultdict(int)
     total_origin_counts = defaultdict(int)
     total_hour_counts = defaultdict(int)
     flight_times = defaultdict(int)
     plot_flight_times = defaultdict(int)
-    flight_time_errors = defaultdict(int) 
-    included_flights = 0 
+    flight_exclusions = defaultdict(int)
+    included_flights = 0
     state_or_country = set()
     with open("all_flights.tsv", "w", newline="") as outf:
         writer = csv.writer(outf, delimiter="\t", lineterminator="\n")
@@ -209,7 +209,6 @@ def create_all_flights_tsv():
                     if month in [4, 6, 9, 11] and day == 31:
                         continue
                     if date(year, month, day) < date(2023, 4, 17):
-                        print("skipping", date(year, month, day))
                         continue
                     today = date.today()
                     if today < date(year, month, day):
@@ -222,7 +221,7 @@ def create_all_flights_tsv():
 
                     with open(flight_data_path, newline="") as csvfile:
                         reader = csv.DictReader(csvfile)
-   
+
                         for row in reader:
                             origin = row["Origin"]
                             airport_code = row["Origin Code"]
@@ -230,18 +229,31 @@ def create_all_flights_tsv():
                             arr_time = row["Arrival Time"]
                             dep_date = row["Departure Date"]
                             arr_date = row["Arrival Date"]
+                            scheduled_arr_time = row["Scheduled Arrival Time"]
+                            scheduled_arr_date = row["Scheduled Arrival Date"]
                             terminal = row["Terminal"]
                             equipment = row["Equipment"]
                             flight = row["Flight"]
                             airline = row["Airline"]
                             status = row["Status"]
-                            
                             if "DIVERTED" in status:
-                                flight_time_errors["Diverted"] += 1 
+                                flight_exclusions["Diverted"] += 1
                                 continue
-
-
-
+                            elif "Canceled" in status:
+                                flight_exclusions["Canceled"] += 1
+                                continue
+                            elif "En Route" in status:
+                                flight_exclusions["En Route"] += 1
+                                continue
+                            elif "Unknown" in status:
+                                if (
+                                    arr_time == scheduled_arr_time
+                                    and arr_date == scheduled_arr_date
+                                ):  
+                                    pass # flight seems fine
+                                else:
+                                    flight_exclusions["Unknown status, irregular arrival time"] += 1 
+                                    continue # Requires further investigation
                             if airport_code in us_codes:
                                 location = us_codes[airport_code]
                                 if location == "La":
@@ -249,8 +261,6 @@ def create_all_flights_tsv():
                                 try:
                                     state = state_code_dict[location]
                                 except:
-                                    #print(f"{location} not in state_code_dict")
-                                    #print(row)
                                     state = None
                                 total_origin_counts[state] += 1
                                 country = "United States"
@@ -258,7 +268,7 @@ def create_all_flights_tsv():
                                 location = non_us_codes[airport_code]
                                 total_origin_counts[location] += 1
                                 country = location
-                                state = None 
+                                state = None
                             elif (
                                 airport_code not in us_codes
                                 and airport_code not in non_us_codes
@@ -282,44 +292,64 @@ def create_all_flights_tsv():
                                         state = state_code_dict[location]
                                         total_origin_counts[state] += 1
                                 except:
-                                    #print(
-                                        #f"Airport code {airport_code} not covered"
-                                    #)
+                                    # print(
+                                    # f"Airport code {airport_code} not covered"
+                                    # )
                                     missing_airport_codes[airport_code] += 1
+                                    flight_exclusions[
+                                        "Missing Airport Code"
+                                    ] += 1
                                     continue
-                           
- 
+
                             if not arr_time:
+                                flight_exclusions[
+                                    "No Arrival Time provided"
+                                ] += 1
                                 continue
-                             
+
                             raw_departure_datetime = datetime.strptime(
                                 f"{dep_date} {dep_time}", "%Y-%m-%d %H:%M"
                             )
- 
-                            if state is not None: 
+
+                            if state is not None:
                                 departure_time_zone = time_zone_dict[state]
                             else:
                                 departure_time_zone = time_zone_dict[country]
 
-                            
+                            tz_adjusted_departure_datetime = (
+                                raw_departure_datetime.replace(
+                                    tzinfo=ZoneInfo(departure_time_zone)
+                                )
+                            )
 
-                            tz_adjusted_departure_datetime = raw_departure_datetime.replace(tzinfo=ZoneInfo(departure_time_zone))
+                            raw_arrival_datetime = datetime.strptime(
+                                f"{arr_date} {arr_time}", "%Y-%m-%d %H:%M"
+                            )
+                            tz_adjusted_arrival_datetime = (
+                                raw_arrival_datetime.replace(
+                                    tzinfo=ZoneInfo("America/New_York")
+                                )
+                            )
 
-                            raw_arrival_datetime = datetime.strptime(f"{arr_date} {arr_time}", "%Y-%m-%d %H:%M")
-                            tz_adjusted_arrival_datetime = raw_arrival_datetime.replace(tzinfo=ZoneInfo("America/New_York"))
-
-                            flight_time = (tz_adjusted_arrival_datetime - tz_adjusted_departure_datetime)
-                            flight_hours = flight_time.total_seconds() / 3600 
+                            flight_time = (
+                                tz_adjusted_arrival_datetime
+                                - tz_adjusted_departure_datetime
+                            )
+                            raw_flight_time = (
+                                raw_arrival_datetime - raw_departure_datetime
+                            )
+                            flight_hours = flight_time.total_seconds() / 3600
                             if flight_hours < 0:
-                                flight_time_errors["Negative Flight Time"] += 1
-                                continue                  
-                            if flight_hours > 24:
-                                flight_time_errors["Flight Time longer than 1 day"] += 1
+                                flight_exclusions["Negative Flight Time"] += 1
                                 continue
                             if flight_hours > 19:
-                                flight_time_errors["Flight Time longer than 19 hours"] += 1
+                                flight_exclusions[
+                                    "Flight Time longer than 19 hours"
+                                ] += 1
                                 continue
-                            included_flights += 1 
+                            included_flights += 1
+                            flight_hours = round(flight_hours) 
+                            plot_flight_times[flight_hours] += 1
                             writer.writerow(
                                 [
                                     origin,
@@ -334,17 +364,16 @@ def create_all_flights_tsv():
                                     flight_time,
                                 ]
                             )
-    for key, value in flight_time_errors.items():
-        print(f"{key}: {value}") 
-    print(f"Included flights: {included_flights}") 
+    for key, value in flight_exclusions.items():
+        print(f"{key}: {value}")
+    print(f"Included flights: {included_flights}")
     with open("total_origin_counts.tsv", "w") as f:
         for location, flight_count in total_origin_counts.items():
             f.write(f"{location}\t{flight_count}\n")
-
+    print(plot_flight_times)
     with open("total_hour_counts.tsv", "w") as f:
         for location, flight_time in total_hour_counts.items():
             f.write(f"{location}\t{flight_time}\n")
-    print(state_or_country)
     missing_airport_codes = dict(
         sorted(
             missing_airport_codes.items(),
@@ -352,8 +381,8 @@ def create_all_flights_tsv():
             reverse=True,
         )
     )
-    #print(missing_airport_codes)
     plt.show()
+
 
 def start():
     create_all_flights_tsv()
