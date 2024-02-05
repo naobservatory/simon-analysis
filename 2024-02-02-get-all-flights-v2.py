@@ -9,53 +9,6 @@ from datetime import datetime, date
 from zoneinfo import ZoneInfo
 import re
 
-airports_not_in_sheet = {  # Fix missing airport codes
-    "MCO": "FL",
-    "BHB": "ME",
-    "PVC": "MA",
-    "TEB": "NJ",
-    "RUT": "VT",
-    "MSS": "NY",
-    "SLK": "NY",
-    "STI": "Dominican Republic",
-    "BED": "MA",
-    "PSM": "NH",
-    "FOK": "NY",
-    "FRG": "NY",
-    "MMU": "NJ",
-    "PWK": "IL",
-    "BLM": "NJ",
-    "PLS": "Turks and Caicos Islands",
-    "LCI": "NH",
-    "BVY": "MA",
-    "OPF": "FL",
-    "OXC": "CT",
-    "OWD": "MA",
-    "BCT": "FL",
-    "VNY": "CA",
-    "CGF": "OH",
-    "PDK": "GA",
-    "KJZI": "SC",
-    "PTK": "MI",
-    "KOQU": "RI",
-    "PSF": "MA",
-    "ILG": "DE",
-    "5B2": "NY",
-    "NHZ": "ME",
-    "APA": "CO",
-    "AGC": "PA",
-    "LUK": "OH",
-    "CTH": "PA",
-    "PNE": "PA",
-    "MVL": "VT",
-    "MTN": "MD",
-    "CDW": "NJ",
-    "ESN": "MD",
-    "EWB": "MA",
-    "SUA": "FL",
-    "JPX": "NY",
-}
-
 
 def get_time_zones():
     time_zone_dict = {}
@@ -64,10 +17,6 @@ def get_time_zones():
             location, time_zone = line.split(",")
             time_zone_dict[location] = time_zone.strip()
     return time_zone_dict
-
-
-def time_to_float(t):
-    return t.hour + t.minute / 60 + t.second / 3600
 
 
 def get_arrivals(day, month, year):
@@ -98,6 +47,13 @@ def get_state_code_dict():
             state_code_dict[row["state_code"]] = row["state_name"]
     return state_code_dict
 
+def get_minor_airport_codes():
+    minor_airport_codes = {}
+    with open("minor_airports.tsv", mode="r", encoding="utf-8") as file:
+        for line in file:
+            airport, location = line.split("\t")
+            minor_airport_codes[airport] = location.strip()
+    return minor_airport_codes
 
 def get_airport_codes():
     non_us_codes = defaultdict(tuple)
@@ -172,6 +128,7 @@ def get_airport_codes():
 
 def create_all_flights_tsv():
     us_codes, non_us_codes = get_airport_codes()
+    minor_airports = get_minor_airport_codes() 
     state_code_dict = get_state_code_dict()
     time_zone_dict = get_time_zones()
 
@@ -191,13 +148,10 @@ def create_all_flights_tsv():
         "Flight Time",
     ]
     missing_airport_codes = defaultdict(int)
-    total_origin_counts = defaultdict(int)
-    total_hour_counts = defaultdict(int)
     flight_times = defaultdict(int)
-    plot_flight_times = defaultdict(int)
-    flight_exclusions = defaultdict(int)
+    flight_exclusions = defaultdict(int) 
     included_flights = 0
-    state_or_country = set()
+    
     with open("all_flights.tsv", "w", newline="") as outf:
         writer = csv.writer(outf, delimiter="\t", lineterminator="\n")
         writer.writerow(headers)
@@ -253,7 +207,7 @@ def create_all_flights_tsv():
                                     pass # flight seems fine
                                 else:
                                     flight_exclusions["Unknown status, irregular arrival time"] += 1 
-                                    continue # Requires further investigation
+                                    continue # Requires further investigation #FIXME #BUG
                             if airport_code in us_codes:
                                 location = us_codes[airport_code]
                                 if location == "La":
@@ -262,11 +216,9 @@ def create_all_flights_tsv():
                                     state = state_code_dict[location]
                                 except:
                                     state = None
-                                total_origin_counts[state] += 1
                                 country = "United States"
                             elif airport_code in non_us_codes:
                                 location = non_us_codes[airport_code]
-                                total_origin_counts[location] += 1
                                 country = location
                                 state = None
                             elif (
@@ -274,27 +226,17 @@ def create_all_flights_tsv():
                                 and airport_code not in non_us_codes
                             ):
                                 try:
-                                    location = airports_not_in_sheet[
+                                    location = minor_airports[
                                         airport_code
                                     ]
-                                    if location == "Dominican Republic":
-                                        country = "Dominican Republic"
-                                        state = None
-                                        total_origin_counts[country] += 1
-                                    elif (
-                                        location == "Turks and Caicos Islands"
-                                    ):
-                                        country = "Turks and Caicos Islands"
-                                        state = None
-                                        total_origin_counts[country] += 1
-                                    else:
-                                        country = "United States"
+                                    if location in state_code_dict: 
                                         state = state_code_dict[location]
-                                        total_origin_counts[state] += 1
+                                        country = "United States"
+                                    else:
+                                        country = location
+                                        state = None 
                                 except:
-                                    # print(
-                                    # f"Airport code {airport_code} not covered"
-                                    # )
+                                    print(f"Missing airport code: {airport_code}") 
                                     missing_airport_codes[airport_code] += 1
                                     flight_exclusions[
                                         "Missing Airport Code"
@@ -349,7 +291,7 @@ def create_all_flights_tsv():
                                 continue
                             included_flights += 1
                             flight_hours = round(flight_hours) 
-                            plot_flight_times[flight_hours] += 1
+                            flight_times[flight_hours] += 1
                             writer.writerow(
                                 [
                                     origin,
@@ -364,16 +306,21 @@ def create_all_flights_tsv():
                                     flight_time,
                                 ]
                             )
+    print(f"\nExcluded flights: Total {sum(flight_exclusions.values())}")
     for key, value in flight_exclusions.items():
         print(f"{key}: {value}")
-    print(f"Included flights: {included_flights}")
-    with open("total_origin_counts.tsv", "w") as f:
-        for location, flight_count in total_origin_counts.items():
-            f.write(f"{location}\t{flight_count}\n")
-    print(plot_flight_times)
-    with open("total_hour_counts.tsv", "w") as f:
-        for location, flight_time in total_hour_counts.items():
-            f.write(f"{location}\t{flight_time}\n")
+    print(f"\nIncluded flights: {included_flights}")
+
+    flight_times = dict(
+        sorted(
+            flight_times.items(),
+            key=lambda item: item[0],
+        )
+    )
+    print("\nFlight Time Distribution:")
+    for hour, count in flight_times.items():
+        print(f"{hour}: {count}")
+
     missing_airport_codes = dict(
         sorted(
             missing_airport_codes.items(),
@@ -381,8 +328,9 @@ def create_all_flights_tsv():
             reverse=True,
         )
     )
-    plt.show()
-
+    
+    for key, value in missing_airport_codes.items():
+        print(f"{key}: {value}")
 
 def start():
     create_all_flights_tsv()
