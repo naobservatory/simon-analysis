@@ -55,10 +55,14 @@ def return_flights():
 
         return us_flights_df 
 
+def return_latest_date():
+    df = return_flights()
+    latest_date = df["Date"].max()
+    earliest_date = df["Date"].min()
+    return earliest_date, latest_date
 
 def return_plotting_df():
     df = return_flights()
-
     df["Flight Hours"] = df["Flight Time"].apply(time_to_float)
 
     df["Plotting Origin"] = np.where(
@@ -97,6 +101,7 @@ def origin_to_nation_dict():
 
 def return_destination_trit_plot():
     df = return_plotting_df()
+    earliest_date, latest_date = return_latest_date() 
     nation_dict = origin_to_nation_dict()
 
     df = df.head(50)
@@ -118,7 +123,7 @@ def return_destination_trit_plot():
     plt.tick_params(axis="y", which="both", left=False, right=False)
     plt.ylabel("")
     plt.xlabel("Total Flight Hours")
-    plt.title("Total Flight Hours per Country/State and Triturator (Top 50)")
+    plt.title(f"Total Flight Hours per Country/State and Triturator (Top 50)\n{earliest_date} - {latest_date}")
 
     plt.tight_layout()
     plt.savefig("triturator_destination_flight_hours.png", dpi=600)
