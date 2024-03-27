@@ -128,7 +128,7 @@ def get_airport_codes():
 
 def create_all_flights_tsv():
     us_codes, non_us_codes = get_airport_codes()
-    minor_airports = get_minor_airport_codes() 
+    minor_airports = get_minor_airport_codes()
     state_code_dict = get_state_code_dict()
     time_zone_dict = get_time_zones()
 
@@ -149,9 +149,9 @@ def create_all_flights_tsv():
     ]
     missing_airport_codes = defaultdict(int)
     flight_times = defaultdict(int)
-    flight_exclusions = defaultdict(int) 
+    flight_exclusions = defaultdict(int)
     included_flights = 0
-    
+
     with open("all_flights.tsv", "w", newline="") as outf:
         writer = csv.writer(outf, delimiter="\t", lineterminator="\n")
         writer.writerow(headers)
@@ -203,10 +203,10 @@ def create_all_flights_tsv():
                                 if (
                                     arr_time == scheduled_arr_time
                                     and arr_date == scheduled_arr_date
-                                ):  
+                                ):
                                     pass # flight seems fine
                                 else:
-                                    flight_exclusions["Unknown status, irregular arrival time"] += 1 
+                                    flight_exclusions["Unknown status, irregular arrival time"] += 1
                                     continue # Requires further investigation #FIXME #BUG
                             if airport_code in us_codes:
                                 location = us_codes[airport_code]
@@ -229,14 +229,14 @@ def create_all_flights_tsv():
                                     location = minor_airports[
                                         airport_code
                                     ]
-                                    if location in state_code_dict: 
+                                    if location in state_code_dict:
                                         state = state_code_dict[location]
                                         country = "United States"
                                     else:
                                         country = location
-                                        state = None 
+                                        state = None
                                 except:
-                                    print(f"Missing airport code: {airport_code}") 
+                                    print(f"Missing airport code: {airport_code}")
                                     missing_airport_codes[airport_code] += 1
                                     flight_exclusions[
                                         "Missing Airport Code"
@@ -249,9 +249,20 @@ def create_all_flights_tsv():
                                 ] += 1
                                 continue
 
-                            raw_departure_datetime = datetime.strptime(
-                                f"{dep_date} {dep_time}", "%Y-%m-%d %H:%M"
-                            )
+                            try:
+                                raw_departure_datetime = datetime.strptime(
+                                    f"{dep_date} {dep_time}", "%Y-%m-%d %H:%M"
+                                )
+                            except:
+                                try:
+                                    raw_departure_datetime = datetime.strptime(
+                                        f"{dep_date} {dep_time}", "%B %d, %Y %H:%M"
+                                    )
+                                except Exception as e:
+                                    print(f"Error parsing departure time: {dep_date} {dep_time}")
+                                    print(e)
+
+
 
                             if state is not None:
                                 departure_time_zone = time_zone_dict[state]
@@ -264,9 +275,18 @@ def create_all_flights_tsv():
                                 )
                             )
 
-                            raw_arrival_datetime = datetime.strptime(
-                                f"{arr_date} {arr_time}", "%Y-%m-%d %H:%M"
-                            )
+                            try:
+                                raw_arrival_datetime = datetime.strptime(
+                                    f"{arr_date} {arr_time}", "%Y-%m-%d %H:%M"
+                                )
+                            except:
+                                try:
+                                    raw_arrival_datetime = datetime.strptime(
+                                        f"{arr_date} {arr_time}", "%B %d, %Y %H:%M"
+                                    )
+                                except Exception as e:
+                                    print(f"Error parsing arrival time: {arr_date} {arr_time}")
+                                    print(e)
                             tz_adjusted_arrival_datetime = (
                                 raw_arrival_datetime.replace(
                                     tzinfo=ZoneInfo("America/New_York")
@@ -290,7 +310,7 @@ def create_all_flights_tsv():
                                 ] += 1
                                 continue
                             included_flights += 1
-                            flight_hours = round(flight_hours) 
+                            flight_hours = round(flight_hours)
                             flight_times[flight_hours] += 1
                             writer.writerow(
                                 [
@@ -328,7 +348,7 @@ def create_all_flights_tsv():
             reverse=True,
         )
     )
-    
+    print("\nMissing Airport Codes:")
     for key, value in missing_airport_codes.items():
         print(f"{key}: {value}")
 
