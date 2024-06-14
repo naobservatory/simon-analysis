@@ -1,0 +1,1393 @@
+---
+title: "Figures for swab sampling post"
+subtitle: ""
+author: "Simon Grimm"
+date: 2024-05-08
+format:
+  html:
+    code-fold: true
+    code-tools: true
+    code-link: true
+    df-print: paged
+editor: visual
+toc: true
+jupyter: venv
+filters:
+    - black-formatter
+---
+
+```{python}
+#| label: load-packages
+#| include: false
+import seaborn as sns
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+import random
+import math
+
+import scipy.stats as stats
+import statsmodels.formula.api as smf
+from typing import List
+from scipy.stats import gmean, linregress
+from collections import defaultdict
+```
+
+```{python}
+#| label: define-functions
+N_SWABS = [50, 100, 200]
+SWAB_STUDY_TITLES = [
+    "Lu et al. 2021",
+    "Babiker et al. 2020",
+    "Mostafa et al. 2020",
+    "Rodriguez et al. 2021",
+]
+
+WW_STUDY_TITLES = ["Rothman et al. 2021", "Crits-Christoph et al. 2021"]
+
+
+def logit(x):
+    return np.log(x / (1 - x))
+
+
+def logistic(x):
+    return 1 / (1 + np.exp(-x))
+
+
+def simulate_p2ra_many(
+    ra_lists=[0.01], sample_populations=[100], n_simulations=1000
+) -> pd.DataFrame:
+    results = defaultdict(list)
+    for sample_pop in sample_populations:
+        for _ in range(n_simulations):
+            results[sample_pop].append(simulate_p2ra(sample_pop, ra_lists))
+    for key, values in results.items():
+        results[key] = sorted(values)
+    df = pd.DataFrame(results)
+    return df
+
+
+def simulate_p2ra(sample_pop=100, ra_lists=[0.01]):
+    target_incidence_p_w = 0.01
+    shedding_duration_w = 2.4
+
+    prevalence = target_incidence_p_w * shedding_duration_w
+    n_sick = np.random.poisson(sample_pop * prevalence)
+
+    if n_sick == 0:
+        return 0
+    ra_sick = 0
+    for _ in range(n_sick):
+        observation = np.random.choice(ra_lists)
+        ra_sick += observation
+    ra_sick = ra_sick / n_sick
+    relative_abundance = n_sick / sample_pop * ra_sick
+
+    return relative_abundance
+
+
+def plot_medians(ax, medians):
+    patches = ax.collections
+    for patch, median in zip(patches, medians):
+        for path in patch.get_paths():
+            vertices = path.vertices
+            x_mid = median
+            closest_x = min(vertices[:, 0], key=lambda x: abs(x - x_mid))
+            y_upper = max(vertices[vertices[:, 0] == closest_x, 1])
+            y_lower = min(vertices[vertices[:, 0] == closest_x, 1])
+            ax.plot([x_mid, x_mid], [y_lower, y_upper], color="white", linewidth=1.5)
+
+
+def return_studies():
+    df_op_lu = pd.read_csv("data/lu_throat_ct_mgs.tsv", sep="\t", skiprows=1)
+    df_op_lu.rename(
+        columns={"SCV-2 Relative Abundance": "scv2_ra", "Ct value": "scv2_ct"},
+        inplace=True,
+    )
+    df_op_lu[["patient_status", "swab_type", "Study"]] = [
+        "Inpatient",
+        "op",
+        "Lu et al. 2021",
+    ]
+
+    df_np_rodriguez = pd.read_csv("data/rodriguez_np_ct_mgs.csv", sep=";")
+    rodriguez_patient_status_dict = {
+        "Hospit": "Inpatient",
+        "Out_Patient": "Outpatient",
+        "Intensive_Care": "ICU",
+    }
+    df_np_rodriguez["patient_status"] = df_np_rodriguez["Group"].replace(
+        rodriguez_patient_status_dict
+    )
+    df_np_rodriguez["scv2_ra"] = (
+        df_np_rodriguez["Reads_2019_CoV"] / df_np_rodriguez["Reads_Total"]
+    )
+    df_np_rodriguez = df_np_rodriguez[df_np_rodriguez["scv2_ra"] != 0]
+    df_np_rodriguez.rename(columns={"CoV_Ct_number": "scv2_ct"}, inplace=True)
+    df_np_rodriguez[["swab_type", "Study"]] = ["np", "Rodriguez et al. 2021"]
+
+    df_np_babiker = pd.read_csv("data/babiker_np_ct_mgs.tsv", sep="\t", skiprows=1)
+    df_np_babiker.rename(
+        columns={
+            "SARS-CoV-2 RT-PCR Ct": "scv2_ct",
+            "SARS-CoV-2 RA": "scv2_ra",
+            "Inpatient/ED vs. Outpatient": "patient_status",
+        },
+        inplace=True,
+    )
+    df_np_babiker["scv2_ct"] = (
+        df_np_babiker["scv2_ct"].replace(",", ".", regex=True).astype(float)
+    )
+    df_np_babiker["patient_status"] = df_np_babiker["patient_status"].apply(
+        lambda x: x if x in ["Inpatient", "Outpatient"] else "Unknown"
+    )
+    df_np_babiker["days_from_onset"] = (
+        df_np_babiker["Day of Testing Relative to Symptom Onset"]
+        .replace(".", "0")
+        .astype(int)
+        .replace("0", "NA")
+    )
+    df_np_babiker[["swab_type", "Study"]] = ["np", "Babiker et al. 2020"]
+
+    df_np_mostafa = pd.read_csv("data/2024-05-30-mostafa-raw-ra-ct.tsv", sep="\t")
+    mostafa_severity_dict = {
+        1: "Required\nventilator",
+        2: "ICU",
+        3: "Inpatient",
+        4: "Outpatient",
+        0: "Unknown",
+    }
+    df_np_mostafa.rename(
+        columns={
+            "SARS-CoV-2 RT-PCR Ct value": "scv2_ct",
+            "CosmosID Proportion Mapped to SARS-CoV-2": "scv2_ra",
+        },
+        inplace=True,
+    )
+    df_np_mostafa["Severity index"] = df_np_mostafa["Severity index"].replace("–", 0)
+    df_np_mostafa["patient_status"] = (
+        df_np_mostafa["Severity index"].astype(int).replace(mostafa_severity_dict)
+    )
+    df_np_mostafa["days_from_onset"] = df_np_mostafa["No. of days from onset"].replace(
+        {"–": "NA", "<7": "6"}
+    )
+    df_np_mostafa = df_np_mostafa[df_np_mostafa["COVID-19-positive"] == True]
+    df_np_mostafa = df_np_mostafa[df_np_mostafa["scv2_ct"] != "–"]
+    df_np_mostafa["scv2_ct"] = df_np_mostafa["scv2_ct"].astype(float)
+    df_np_mostafa = df_np_mostafa[df_np_mostafa["scv2_ra"] != 0].reset_index(drop=True)
+    df_np_mostafa["scv2_ra"] = df_np_mostafa["scv2_ra"].astype(float)
+    df_np_mostafa[["swab_type", "Study"]] = ["np", "Mostafa et al. 2020"]
+
+    return [df_op_lu, df_np_babiker, df_np_mostafa, df_np_rodriguez]
+
+
+def get_logit_normal_samples(ras):
+    ra_values = np.array(ras)
+    logit_ra_values = logit(ra_values)
+    mean, std = np.mean(logit_ra_values), np.std(logit_ra_values)
+    norm_dist = stats.norm(loc=mean, scale=std)
+    logit_samples = norm_dist.rvs(size=100000)
+    samples = logistic(logit_samples)
+    return samples
+
+
+def return_swab_p2ra(subset_titles, ra_lists):
+    swab_df = pd.DataFrame()
+
+    for subset, ras in zip(subset_titles, ra_lists):
+
+        samples = get_logit_normal_samples(ras)
+
+        df = simulate_p2ra_many(samples, N_SWABS, n_simulations=10000)
+
+        df["Subset"] = subset
+        swab_df = pd.concat(
+            [
+                swab_df,
+                df.melt(
+                    id_vars="Subset",
+                    value_vars=N_SWABS,
+                    var_name="Sample Size",
+                    value_name="Relative Abundance",
+                ),
+            ]
+        )
+
+    return swab_df
+
+
+def get_composite_p2ra():
+    composite_ras = return_composite_ras()
+    composite_p2ra_df = return_swab_p2ra(["Original Composite Data"], [composite_ras])
+    return composite_p2ra_df
+
+def get_adjusted_composite_p2ra():
+    ASYMPTOMATIC_SHARE = 0.35
+    asymptomatic_ras, symptomatic_ras = return_adjusted_composite_ras()
+
+    asymptomatic_p2ra_df = return_swab_p2ra(
+        ["Adjusted\nComposite Data"], [asymptomatic_ras]
+    )
+    symptomatic_p2ra_df = return_swab_p2ra(
+        ["Adjusted\nComposite Data"], [symptomatic_ras]
+    )
+
+    asymptomatics = asymptomatic_p2ra_df.sample(
+        frac=ASYMPTOMATIC_SHARE, random_state=42
+    )
+    symptomatics = symptomatic_p2ra_df.sample(
+        frac=1 - ASYMPTOMATIC_SHARE, random_state=42
+    )
+
+    composite_adjusted_p2ra_df = pd.concat(
+        [asymptomatics, symptomatics], ignore_index=True
+    )
+    return composite_adjusted_p2ra_df
+
+
+def get_study_p2ra():
+    study_ras = return_study_ras()
+    study_p2ra_df = return_swab_p2ra(SWAB_STUDY_TITLES, study_ras)
+    return study_p2ra_df
+
+
+def get_fig_2_dfs():
+    swab_df = pd.concat([study_p2ra_df, composite_p2ra_df], ignore_index=True)
+    swab_df.reset_index(drop=True, inplace=True)
+    df_rothman_ras, df_crits_christoph_ras
+
+    df_ww = pd.DataFrame(
+        {
+            "Relative Abundance": df_rothman_ras + df_crits_christoph_ras,
+            "Subset": ["Rothman et al. 2021"] * len(df_rothman_ras)
+            + ["Crits-Christoph et al. 2021"] * len(df_crits_christoph_ras),
+        }
+    )
+
+    return swab_df, df_ww
+
+
+def get_fig_7_dfs():
+    swab_df = pd.concat(
+        [composite_p2ra_df, adjusted_composite_p2ra_df], ignore_index=True
+    )
+    swab_df.reset_index(drop=True, inplace=True)
+    df_ww = pd.DataFrame(
+        {
+            "Relative Abundance": df_rothman_ras + df_crits_christoph_ras,
+            "Subset": ["Rothman et al. 2021"] * len(df_rothman_ras)
+            + ["Crits-Christoph et al. 2021"] * len(df_crits_christoph_ras),
+        }
+    )
+
+    return swab_df, df_ww
+
+
+def return_composite_ras():
+    ras_lists = return_study_ras()
+    composite_swab_ras = sum(ras_lists, [])
+
+    return composite_swab_ras
+
+
+def return_adjusted_composite_ras():
+    df_op_lu, df_np_babiker, df_np_mostafa, df_np_rodriguez = return_studies()
+
+    composite_df = pd.concat([df_op_lu, df_np_babiker, df_np_mostafa, df_np_rodriguez])
+
+    composite_df = composite_df[
+        composite_df["patient_status"].isin(["Inpatient", "Outpatient"])
+    ]
+    df_asymptomatic, df_symptomatic = adjust_cts(composite_df)
+
+    df_asymptomatic_mgs_df = adjust_rel_abun(df_asymptomatic)
+    df_symptomatic_mgs_df = adjust_rel_abun(df_symptomatic)
+
+    asymptomatic_ras = df_asymptomatic_mgs_df["adjusted_scv2_ra"].tolist()
+    symptomatic_ras = df_symptomatic_mgs_df["adjusted_scv2_ra"].tolist()
+
+    return asymptomatic_ras, symptomatic_ras
+
+
+def adjust_cts(df):
+    ASYMPTOMATIC_ADJUSTMENT_FACTOR = 1.50
+    NP_ADJUSTMENT_FACTOR = 1.82
+    OP_ADJUSTMENT_FACTOR = -0.92
+    df["adjusted_scv2_ct"] = df["scv2_ct"]
+    df.loc[df["swab_type"] == "np", "adjusted_scv2_ct"] += NP_ADJUSTMENT_FACTOR
+    df.loc[df["swab_type"] == "op", "adjusted_scv2_ct"] += OP_ADJUSTMENT_FACTOR
+    df_symptomatic = df.copy()
+    df_asymptomatic = df.copy()
+    df_asymptomatic["adjusted_scv2_ct"] += ASYMPTOMATIC_ADJUSTMENT_FACTOR
+
+    return df_asymptomatic, df_symptomatic
+
+
+def adjust_rel_abun(df):
+    df_np_babiker, df_np_rodriguez, df_op_lu, df_np_mostafa = return_studies()
+
+    composite_df = pd.concat([df_op_lu, df_np_babiker, df_np_mostafa, df_np_rodriguez])
+    composite_df["scv2_ra_logged"] = composite_df["scv2_ra"].apply(np.log10)
+
+    slope, intercept, r_value, p_value, std_err = linregress(
+        composite_df["scv2_ct"], composite_df["scv2_ra_logged"]
+    )
+    df["adjusted_scv2_ra_logged"] = intercept + slope * df["adjusted_scv2_ct"]
+    df["adjusted_scv2_ra_logged_stderr"] = np.sqrt(
+        std_err**2 + (std_err * df["adjusted_scv2_ct"]) ** 2
+    )
+
+    noise = np.random.normal(loc=0, scale=df["adjusted_scv2_ra_logged_stderr"])
+    df["adjusted_scv2_ra_logged_with_noise"] = df["adjusted_scv2_ra_logged"] + noise
+    df["adjusted_scv2_ra"] = 10 ** df["adjusted_scv2_ra_logged_with_noise"]
+
+    return df
+
+
+def return_study_ras():
+    studies = return_studies()
+    ras_lists = [df["scv2_ra"].dropna().tolist() for df in studies]
+    return ras_lists
+
+
+def return_ww_p2ra():
+    df_wastewater = pd.read_csv("data/2024-05-07-fits.tsv", sep="\t")
+    df_rothman_ras = df_wastewater[
+        (df_wastewater["study"] == "rothman")
+        & (df_wastewater["location"] == "Overall")
+        & (df_wastewater["pathogen"] == "sars_cov_2")
+    ]["ra_at_1in100"].tolist()
+    df_crits_christoph_ras = df_wastewater[
+        (df_wastewater["study"] == "crits_christoph")
+        & (df_wastewater["location"] == "Overall")
+        & (df_wastewater["pathogen"] == "sars_cov_2")
+    ]["ra_at_1in100"].tolist()
+    return df_rothman_ras, df_crits_christoph_ras
+
+# Generate p2ra values one time before figures are created.
+studies = return_studies()
+composite_p2ra_df = get_composite_p2ra()
+adjusted_composite_p2ra_df = get_adjusted_composite_p2ra()
+study_p2ra_df = get_study_p2ra()
+df_rothman_ras, df_crits_christoph_ras = return_ww_p2ra()
+
+```
+
+
+
+### Figure 1
+
+```{python}
+#| warning: false
+#| echo: false
+#| fig-cap: "**Figure 1: Relative Abundance and qPCR CT values for Lu et al. 2021, Babiker et al. 2020, Mostafa et al. 2020, and Rodriguez et al. 2021.**"
+
+df_op_lu, df_np_babiker, df_np_mostafa, df_np_rodriguez = return_studies()
+
+fig, axs = plt.subplots(2, 2, figsize=(10, 8), dpi=600)
+
+df_op_lu["study"] = "Lu et al. 2021"
+df_np_babiker["study"] = "Babiker et al. 2020"
+df_np_mostafa["study"] = "Mostafa et al. 2020"
+df_np_rodriguez["study"] = "Rodriguez et al. 2021"
+
+for study_df in df_np_babiker, df_np_rodriguez, df_op_lu, df_np_mostafa:
+    print(
+        study_df["study"].unique(),
+        gmean(study_df["scv2_ra"]),
+        gmean(study_df["scv2_ct"]),
+    )
+
+composite_df = pd.concat([df_op_lu, df_np_babiker, df_np_mostafa, df_np_rodriguez])
+
+viridis_palette = sns.color_palette("viridis", n_colors=composite_df["study"].nunique())
+
+sns.histplot(
+    ax=axs[0, 0],
+    data=composite_df,
+    x="scv2_ra",
+    hue="study",
+    palette=viridis_palette,
+    bins=30,
+    log_scale=True,
+    element="bars",
+    linewidth=0,
+    multiple="stack",
+    legend=False,
+)
+
+axs[0, 0].set_title("a", x=-0.08, y=1.0, ha="left", fontsize=10, fontweight="bold")
+axs[0, 0].set_ylabel("Count")
+axs[0, 0].set_xlabel("Relative Abundance")
+axs[0, 0].tick_params(axis="x", which="minor", bottom=False)
+
+sns_default = sns.color_palette(n_colors=composite_df["patient_status"].nunique())
+sns.histplot(
+    ax=axs[0, 1],
+    data=composite_df,
+    x="scv2_ra",
+    hue="patient_status",
+    palette=sns_default,
+    bins=30,
+    log_scale=True,
+    element="bars",
+    linewidth=0,
+    multiple="stack",
+    legend=False,
+)
+axs[0, 1].set_title("b", x=-0.08, y=1.0, ha="left", fontsize=10, fontweight="bold")
+axs[0, 1].set_xlabel("Relative Abundance")
+axs[0, 1].set_ylabel("Count")
+
+axs[0, 1].tick_params(axis="x", which="minor", bottom=False)
+
+sns.scatterplot(
+    ax=axs[1, 0],
+    data=composite_df,
+    x="scv2_ra",
+    y="scv2_ct",
+    hue="study",
+    style="study",
+    palette=viridis_palette,
+)
+axs[1, 0].set_title("c", x=-0.08, y=1.0, ha="left", fontsize=10, fontweight="bold")
+axs[1, 0].set_xlabel("Relative Abundance")
+axs[1, 0].set_ylabel("qPCR cycle threshold value")
+axs[1, 0].set_xscale("log")
+
+axs[1, 0].tick_params(axis="x", which="minor", bottom=False)
+
+sns.move_legend(
+    axs[1, 0],
+    "lower center",
+    bbox_to_anchor=(0.5, -0.44),
+    ncol=2,
+    title=None,
+    frameon=False,
+    fontsize=11,
+    markerscale=2,
+)
+
+sns.scatterplot(
+    ax=axs[1, 1],
+    data=composite_df,
+    x="scv2_ra",
+    y="scv2_ct",
+    hue="patient_status",
+    style="patient_status",
+    palette=sns_default,
+)
+axs[1, 1].set_title("d", x=-0.08, y=1.0, ha="left", fontsize=10, fontweight="bold")
+axs[1, 1].set_xlabel("Relative Abundance")
+axs[1, 1].set_ylabel("qPCR cycle threshold value")
+axs[1, 1].set_xscale("log")
+
+axs[1, 1].tick_params(axis="x", which="minor", bottom=False)
+
+sns.move_legend(
+    axs[1, 1],
+    "lower center",
+    bbox_to_anchor=(0.5, -0.54),
+    ncol=2,
+    title=None,
+    frameon=False,
+    fontsize=11,
+    markerscale=1.7,
+)
+
+for ax in axs.flat:
+    ax.spines["right"].set_visible(False)
+    ax.spines["top"].set_visible(False)
+    ax.tick_params(axis="y", which="both", left=False, right=False, labelleft=True)
+plt.tight_layout()
+plt.savefig("fig/fig_1.png", dpi=600)
+
+```
+
+### Figure 2
+```{python}
+#| warning: false
+#| echo: false
+#| fig-cap: "**Figure 2: Simulated RA(1%) for Lu et al. 2021, Babiker et al. 2020, Mostafa et al. 2020, and Rodriguez et al. 2021.**"
+def return_fig_2():
+    df_swab, df_ww = get_fig_2_dfs()
+    for subset in df_swab["Subset"].unique():
+        for swab_sample_size in N_SWABS:
+            subset_df = df_swab.query(
+                "Subset == @subset and `Sample Size` == @swab_sample_size"
+            )
+            median = subset_df["Relative Abundance"].median()
+            zero_count_fraction = (subset_df["Relative Abundance"] == 0).mean()
+            print(
+                f"Subset: {subset}, Sample Size: {swab_sample_size}, Fraction of Zero Counts: {zero_count_fraction}, Median: {median}"
+            )
+
+    df_ww["Relative Abundance"] = np.log10(df_ww["Relative Abundance"])
+    df_swab["Relative Abundance"] = np.log10(df_swab["Relative Abundance"])
+
+    fig, axs = plt.subplots(
+        2, 1, figsize=(8, 6), dpi=600, gridspec_kw={"height_ratios": [3, 1]}
+    )
+    fig.subplots_adjust(hspace=0.4)
+    colors = sns.color_palette("viridis", len(N_SWABS))
+
+    sns.violinplot(
+        x="Relative Abundance",
+        y="Subset",
+        ax=axs[0],
+        hue="Sample Size",
+        palette=colors,
+        data=df_swab,
+        linewidth=0,
+        bw_adjust=1.5,
+        dodge=0.4,
+        cut=0.5,
+    )
+
+    swab_medians_logged = []
+
+    for subset in df_swab["Subset"].unique():
+        for swab_sample_size in N_SWABS:
+            subset_df = df_swab.query(
+                "Subset == @subset and `Sample Size` == @swab_sample_size"
+            )
+            median_logged = subset_df["Relative Abundance"].median()
+            swab_medians_logged.append(median_logged)
+
+    plot_medians(axs[0], swab_medians_logged)
+
+    sns.violinplot(
+        x="Relative Abundance",
+        y="Subset",
+        ax=axs[1],
+        color="#aedc31",
+        data=df_ww,
+        inner=None,
+        linewidth=0,
+        bw_adjust=1.5,
+        width=0.5,
+        dodge=0.2,
+    )
+
+    ww_medians_logged = []
+    for study in WW_STUDY_TITLES:
+        median_logged = np.median(
+            df_ww[(df_ww["Subset"] == study)]["Relative Abundance"]
+        )
+        print(study, 10**median)
+        ww_medians_logged.append(median)
+
+    plot_medians(axs[1], ww_medians_logged)
+
+    axs[0].set_title(
+        "a (Swabs)", x=-0.31, y=0.95, fontsize=10, ha="left", fontweight="heavy"
+    )
+    axs[1].set_title(
+        "b (Wastewater)", x=-0.31, y=0.95, fontsize=10, ha="left", fontweight="bold"
+    )
+
+    for ax in axs:
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_visible(False)
+        ax.set_ylabel("")
+
+        y_labels = [
+            label.get_text().rsplit(" ", 1)[0]
+            + "\n"
+            + label.get_text().rsplit(" ", 1)[1]
+            if " " in label.get_text()
+            else label.get_text()
+            for label in ax.get_yticklabels()
+        ]
+        ax.set_yticklabels(y_labels)
+
+        ax.tick_params(axis="y", which="both", left=False, right=False, labelleft=True)
+
+    xmin, xmax = -10, 0
+    axs[0].set_xlim(xmin, xmax)
+    axs[1].set_xlim(xmin, xmax)
+
+    for x in np.arange(math.ceil(xmin), 1, 1):
+        axs[0].axvline(
+            x=x, color="black", linestyle="--", linewidth=0.3, alpha=0.2, zorder=-1
+        )
+        axs[1].axvline(
+            x=x, color="black", linestyle="--", linewidth=0.3, alpha=0.2, zorder=-1
+        )
+
+    current_xticks = axs[0].get_xticks()
+    for ax in axs:
+        ax.set_xticklabels(
+            [
+                "$10^{{{}}}$".format(int(value)) if value != 0 else "1"
+                for value in current_xticks
+            ]
+        )
+    legend = axs[0].legend(
+        title="Number of\nswabs",
+        loc="center left",
+        bbox_to_anchor=(1, 0.5),
+        ncol=1,
+        frameon=False,
+    )
+    legend._legend_box.align = "left"
+
+    plt.tight_layout()
+    plt.savefig("fig/fig_2.png", dpi=600)
+    plt.savefig("fig/fig_2.pdf", dpi=600)
+
+
+return_fig_2()
+
+```
+
+### Figure 3
+
+```{python}
+#| warning: false
+#| echo: false
+#| label: np_nasal_ct_plot
+#| fig-cap: "**Figure 3: Nasal swabs vs nasopharyngeal swabs.** Data from Patriquin et al. 2022, McCulloch et al. 2020, Pere et al. 2020, Kojima et al. 2020, and Tu et al. 2020."
+
+def return_fig_3():
+    df = pd.read_csv("data/2024-05-08-np-nasal-ct.tsv", sep="\t", skiprows=1)
+
+    df = df.melt(var_name="Study", value_name="CT Difference")
+
+    pretty_study_names = {
+        "Patriquin2022": "Patriquin et al. 2022",
+        "McCulloch2020": "McCulloch et al. 2020",
+        "Pere2020": "Pere et al. 2020",
+        "Kojima2020": "Kojima et al. 2020",
+        "Tu2020": "Tu et al. 2020",
+    }
+
+    df["Study"] = df["Study"].map(pretty_study_names).values
+
+    mean_ct_diff = df.groupby("Study", as_index=False)["CT Difference"].mean()
+    fig = plt.figure(figsize=(8, 4), dpi=600)
+
+    colors = sns.color_palette("viridis", len(df["Study"].unique()))
+
+    sns.stripplot(
+        data=df,
+        y="Study",
+        x="CT Difference",
+        hue="Study",
+        jitter=True,
+        zorder=-1,
+        palette=colors,
+        alpha=0.5,
+    )
+    sns.pointplot(
+        data=mean_ct_diff,
+        y="Study",
+        x="CT Difference",
+        linestyles="none",
+        markers="d",
+        color="#36454F",
+        markersize=7,
+        errorbar=None,
+        zorder=1,
+    )
+    plt.legend([], [], frameon=False)
+    plt.ylabel("")
+    plt.xlabel("SARS-CoV-2 qPCR CT Δ (NP - Nasal)")
+    plt.tick_params(axis="y", which="both", left=False, right=False, labelleft=True)
+
+    x_min, x_max = plt.xlim()
+
+    plt.text(x_max / 2, -0.6, "Favors Nasal", fontsize=10, color="black", ha="center")
+    plt.text(
+        x_min / 2, -0.6, "Favors Nasopharyngeal", fontsize=10, color="black", ha="center"
+    )
+    x_min = math.ceil(x_min / 5) * 5
+    x_max = math.ceil(x_max / 5) * 5
+
+    x_marks = np.arange(x_min, x_max, 2.5)
+    for x in x_marks:
+        if x == 0:
+            continue
+        plt.axvline(x=x, color="grey", linestyle="--", alpha=0.5, linewidth=0.5, zorder=-2)
+
+    plt.axvline(x=0, color="red", linestyle="--", alpha=0.5, zorder=-2)
+
+    plt.gca().spines["right"].set_visible(False)
+    plt.gca().spines["top"].set_visible(False)
+    plt.gca().spines["left"].set_visible(False)
+    plt.tight_layout()
+
+    plt.savefig("fig/fig_3.png", dpi=600)
+
+
+
+return_fig_3()
+```
+
+### Figure 4
+
+
+```{python}
+#| fig-cap: "**Figure 4: Nasal swabs vs Oro-pharyngeal swabs.** Data from Goodall et al. 2022."
+#| warning: false
+#| echo: false
+def return_fig_4():
+    df = pd.read_csv("data/goodall-op-nasal-ct.tsv", sep="\t", skiprows=1)
+    pretty_study_names = {
+        "Goodall2022": "Goodall et al. 2022",
+    }
+    df = df.melt(var_name="Study", value_name="CT Difference")
+    df["Study"] = df["Study"].map(pretty_study_names).values
+    mean_ct_diff = df.groupby("Study", as_index=False)["CT Difference"].mean()
+    print(mean_ct_diff)
+    fig, ax = plt.subplots(figsize=(8, 1.65), dpi=600)
+
+    viridis = sns.color_palette("viridis", 1)
+    sns.stripplot(
+        data=df,
+        y="Study",
+        x="CT Difference",
+        hue="Study",
+        jitter=True,
+        zorder=-1,
+        ax=ax,
+        alpha=0.8,
+        palette=viridis,
+    )
+    sns.pointplot(
+        data=mean_ct_diff,
+        y="Study",
+        x="CT Difference",
+        linestyles="none",
+        markers="d",
+        color="#36454F",
+        markersize=8,
+        errorbar=None,
+        zorder=1,
+        ax=ax,
+    )
+    ax.legend([], [], frameon=False)
+
+    ax.set_ylabel("")
+    ax.set_xlabel("SARS-CoV-2 qPCR CT Δ (OP - Nasal)")
+    ax.tick_params(axis="y", which="both", left=False, right=False, labelleft=True)
+    x_min, x_max = ax.get_xlim()
+
+    ax.text(x_max / 2, -0.6, "Favors Nasal", fontsize=9, color="black", ha="center")
+    ax.text(
+        x_min / 2, -0.6, "Favors Oropharyngeal", fontsize=9, color="black", ha="center"
+    )
+
+    x_min = math.ceil(x_min / 5) * 5
+    x_max = math.ceil(x_max / 5) * 5
+
+    x_marks = np.arange(x_min, x_max, 2.5)
+    for x in x_marks:
+        if x == 0:
+            continue
+        ax.axvline(
+            x=x, color="grey", linestyle="--", alpha=0.5, linewidth=0.5, zorder=-2
+        )
+    ax.axvline(x=0, color="red", linestyle="--", alpha=0.5, zorder=-2)
+
+    ax.axhline(y=0.5, color="grey", linestyle="--", alpha=0.5, linewidth=0.5)
+
+    ax.spines["right"].set_visible(False)
+    ax.spines["top"].set_visible(False)
+    ax.spines["left"].set_visible(False)
+    plt.tight_layout()
+    plt.savefig("fig/fig_4.png", dpi=600)
+    plt.show()
+
+
+return_fig_4()
+
+```
+
+
+
+
+```{python}
+#| warning: false
+#| echo: false
+# Figure not shown in the report
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import norm
+
+# Source: https://www.medrxiv.org/content/10.1101/2020.05.05.20084889v1.full#:~:text=Comparing%20the%20samples,respectively%20(p%3E0.09).
+data = {
+    "E_NP": {"median": 25.5, "10th": 20.5, "90th": 29.5},
+    "E_Nasal": {"median": 27.6, "10th": 24.7, "90th": 32.4},
+    "E_Throat": {"median": 28.7, "10th": 23.5, "90th": 34.2},
+    "RdRp_NP": {"median": 27.9, "10th": 23.5, "90th": 32.4},
+    "RdRp_Nasal": {"median": 30.5, "10th": 27.5, "90th": 35.0},
+    "RdRp_Throat": {"median": 31.3, "10th": 26.5, "90th": 35.5},
+}
+
+
+def calculate_mean_std(median, p10, p90):
+    mean = median
+    std = (p90 - p10) / (2 * norm.ppf(0.9))
+    return mean, std
+
+
+x = np.linspace(10, 40, 1000)
+
+distributions = []
+
+for key, values in data.items():
+    mean, std = calculate_mean_std(values["median"], values["10th"], values["90th"])
+    # print(mean, std)
+    distribution = np.random.normal(mean, std, 10000)
+    print(np.mean(distribution), key)
+    distributions.append(distribution)
+
+mean_of_means = {}
+swab_types = ["NP", "Nasal", "Throat"]
+
+for swab in swab_types:
+    swab_means = [
+        np.mean(distribution)
+        for key, distribution in zip(data.keys(), distributions)
+        if swab in key
+    ]
+    mean_of_means[swab] = np.mean(swab_means)
+
+print(mean_of_means)
+
+plt.figure(figsize=(10, 6))
+for i, key in enumerate(data.keys()):
+    sns.kdeplot(distributions[i], label=key, fill=False)
+plt.xlabel("Ct Value")
+plt.ylabel("Density")
+plt.title("Kernel Density Estimates of Distributions")
+plt.legend()
+plt.grid(True)
+plt.show()
+```
+
+
+### Figure 5 Inpatient vs Outpatient
+
+```{python}
+#| label: target-studies-patient-composition
+#| warning: false
+#| fig-cap: "**Figure 5: Patient composition of Lu et al. 2021, Babiker et al. 2020, Mostafa et al. 2020, and Rodriguez et al. 2021.**"
+def return_fig_5():
+    df_op_lu, df_np_babiker, df_np_mostafa, df_np_rodriguez = return_studies()
+    order = ["Outpatient", "Inpatient", "Required\nventilator", "ICU", "Unknown"]
+
+    lu_counts = df_op_lu["patient_status"].value_counts().reindex(order)
+    babiker_counts = df_np_babiker["patient_status"].value_counts().reindex(order)
+    mostafa_counts = df_np_mostafa["patient_status"].value_counts().reindex(order)
+    rodriguez_counts = (
+        df_np_rodriguez["patient_status"].value_counts().reindex(order).dropna()
+    )
+
+    print(lu_counts, babiker_counts, mostafa_counts, rodriguez_counts)
+
+    fig, axs = plt.subplots(
+        1, 4, figsize=(10, 4), width_ratios=[0.7, 1.5, 2.4, 4], sharey=True, dpi=800
+    )
+
+    colors = sns.color_palette("viridis", 10)
+    color_dict = {
+        "Outpatient": colors[9],
+        "Inpatient": colors[3],
+        "Required\nventilator": colors[5],
+        "ICU": colors[0],
+        "Unknown": colors[7],
+    }
+
+    axs[0].bar(
+        lu_counts.index, lu_counts.values, color=color_dict["Inpatient"], width=0.5
+    )
+    axs[0].set_title("Lu et al. 2021", fontsize=10)
+    axs[0].set_ylabel("Count")
+
+    axs[1].bar(
+        babiker_counts.index,
+        babiker_counts.values,
+        color=[color_dict[x] for x in babiker_counts.index],
+        width=0.8,
+    )
+    axs[1].set_title("Babiker et al. 2020", fontsize=10)
+    # axs[1].set_ylim(0, max(babiker_counts.values) + 5)
+
+    axs[3].bar(
+        mostafa_counts.index,
+        mostafa_counts.values,
+        color=[color_dict[x] for x in mostafa_counts.index],
+    )
+    axs[3].set_title("Mostafa et al. 2020", fontsize=10)
+    axs[3].set_ylim(0, max(mostafa_counts.values) + 10)
+    axs[3].set_yticks(np.arange(0, max(mostafa_counts.values) + 30, 10))
+
+    axs[2].bar(
+        rodriguez_counts.index,
+        rodriguez_counts.values,
+        color=[color_dict[x] for x in rodriguez_counts.index],
+    )
+    axs[2].set_title("Rodriguez et al. 2021", fontsize=10)
+    axs[2].set_ylim(0, max(rodriguez_counts.values) + 5)
+    axs[2].set_yticks(np.arange(0, max(rodriguez_counts.values) + 10, 5))
+
+    for ax in axs:
+        ax.spines["right"].set_visible(False)
+        ax.spines["top"].set_visible(False)
+        ax.tick_params(axis="y", which="both", left=False, right=False, labelleft=True)
+        ax.tick_params(
+            axis="x",
+            which="both",
+            top=False,
+            bottom=False,
+            labeltop=False,
+            labelbottom=True,
+            labelsize=9,
+        )
+        # ax.set_ylabel('')
+        for x in np.arange(0, 50, 10):
+            ax.axhline(
+                y=x, color="grey", linestyle="--", alpha=0.5, linewidth=0.5, zorder=-1
+            )
+
+    plt.tight_layout()
+    plt.savefig("fig/fig_5.png", dpi=800)
+    plt.show()
+
+
+return_fig_5()
+
+```
+
+#### compute share of outpatients.
+```{python}
+# TODO: Hide output.
+df_op_lu, df_np_babiker, df_np_mostafa, df_np_rodriguez = return_studies()
+order = ["Outpatient", "Inpatient", "Required\nventilator", "ICU", "Unknown"]
+
+lu_counts = df_op_lu["patient_status"].value_counts().reindex(order)
+babiker_counts = df_np_babiker["patient_status"].value_counts().reindex(order)
+mostafa_counts = df_np_mostafa["patient_status"].value_counts().reindex(order)
+rodriguez_counts = (
+    df_np_rodriguez["patient_status"].value_counts().reindex(order).dropna()
+)
+
+composite_counts = pd.DataFrame(
+    {
+        "Lu": lu_counts,
+        "Babiker": babiker_counts,
+        "Mostafa": mostafa_counts,
+        "Rodriguez": rodriguez_counts,
+    }
+)
+
+total_counts_across_studies = composite_counts.sum(axis=1)
+share_outpatients_across_studies = (
+    total_counts_across_studies["Outpatient"] / total_counts_across_studies.sum()
+)
+
+print(total_counts_across_studies, total_counts_across_studies.sum())
+print(
+    f"Share of Outpatients across all studies: {share_outpatients_across_studies:.2%}"
+)
+
+```
+
+
+
+### Figure 6
+
+```{python}
+#| label: knudtzen-days-status-ct
+#| warning: false
+#| fig-cap: "**Figure 6: Relationship between days from symptom onset and CT values.**"
+#TODO: Hide model output
+import statsmodels.formula.api as smf
+
+df_knudtzen_ct_days = pd.read_csv("data/knudtzen2021_ct_days.tsv", sep="\t", skiprows=1)
+df_knudtzen_ct_days["Patient Status"] = df_knudtzen_ct_days["Patient Status"].astype(
+    "category"
+)
+df_knudtzen_ct_days["Day"] = df_knudtzen_ct_days["Day"].round()
+status_to_color = {
+    status: idx
+    for idx, status in enumerate(df_knudtzen_ct_days["Patient Status"].unique())
+}
+colors = sns.color_palette("viridis", len(status_to_color))
+
+reg = smf.ols('CT ~ Day + Q("Patient Status")', data=df_knudtzen_ct_days)
+results = reg.fit()
+print(results.summary())
+
+fig, ax = plt.subplots(figsize=(6, 3.5), dpi=600)
+for status, color in zip(df_knudtzen_ct_days["Patient Status"].unique(), colors):
+    subset = df_knudtzen_ct_days[df_knudtzen_ct_days["Patient Status"] == status]
+    plt.scatter(
+        subset["Day"],
+        subset["CT"],
+        c=[color],
+        label=status,
+        edgecolors="w",
+        linewidths=0.5,
+    )
+
+    line_x_values = range(int(subset["Day"].min()), int(subset["Day"].max()) + 1)
+    line_y_values = results.predict(
+        pd.DataFrame(
+            {"Day": line_x_values, "Patient Status": [status] * len(line_x_values)}
+        )
+    )
+
+    plt.plot(line_x_values, line_y_values, color=color, linestyle="--", linewidth=2)
+
+plt.xlabel("Days from symptom onset")
+plt.ylabel("qPCR-CT Value")
+plt.legend(
+    title="", loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=2, frameon=False
+)
+
+
+for val in range(0, 20, 5):
+    ax.axvline(x=val, color="grey", linestyle="--", linewidth=0.5, alpha=0.3, zorder=-1)
+
+for val in range(15, 40, 5):
+    ax.axhline(y=val, color="grey", linestyle="--", linewidth=0.5, alpha=0.3, zorder=-1)
+
+ax.set_xticks(range(0, int(df_knudtzen_ct_days["Day"].max()) + 1, 5))
+
+ax.spines["right"].set_visible(False)
+ax.spines["top"].set_visible(False)
+
+
+plt.tight_layout()
+plt.savefig("fig/knudtzen_ct_days.png", dpi=600)
+plt.show()
+
+```
+
+
+
+### Figure 7
+
+
+```{python}
+
+
+table_data = defaultdict()
+ww_medians = []
+
+
+def return_fig_7():
+    plot_df_swab, plot_df_ww = get_fig_7_dfs()
+    for subset in plot_df_swab["Subset"].unique():
+        for swab_sample_size in N_SWABS:
+            subset_df = plot_df_swab.query(
+                "Subset == @subset and `Sample Size` == @swab_sample_size"
+            )
+            median = subset_df["Relative Abundance"].median()
+            zero_count_fraction = len((subset_df["Relative Abundance"] == 0)) / len(
+                subset_df
+            )
+            print(
+                f"Subset: {subset}, Sample Size: {swab_sample_size}, Fraction of Zero Counts: {zero_count_fraction}, Median: {median}"
+            )
+
+    plot_df_ww["Relative Abundance"] = np.log10(plot_df_ww["Relative Abundance"])
+    plot_df_swab["Relative Abundance"] = np.log10(plot_df_swab["Relative Abundance"])
+
+    fig, axs = plt.subplots(
+        2,
+        1,
+        figsize=(8, 4),
+        dpi=600,
+        gridspec_kw={"height_ratios": [1.5, 1]},
+    )
+    fig.subplots_adjust(hspace=0.4)
+    colors = sns.color_palette("viridis", 3)
+    sns.violinplot(
+        x="Relative Abundance",
+        y="Subset",
+        ax=axs[0],
+        hue="Sample Size",
+        palette=colors,
+        data=plot_df_swab,
+        linewidth=0,
+        bw_adjust=1.5,
+        dodge=0.4,
+        cut=1,
+    )
+    swab_medians_logged = []
+    for subset in plot_df_swab["Subset"].unique():
+        for swab_sample_size in N_SWABS:
+            median = np.median(
+                plot_df_swab[
+                    (plot_df_swab["Subset"] == subset)
+                    & (plot_df_swab["Sample Size"] == swab_sample_size)
+                ]["Relative Abundance"]
+            )
+            swab_medians_logged.append(median)
+
+    plot_medians(axs[0], swab_medians_logged)
+    sns.violinplot(
+        x="Relative Abundance",
+        y="Subset",
+        ax=axs[1],
+        color="#aedc31",
+        data=plot_df_ww,
+        linewidth=0,
+        bw_adjust=1.5,
+        width=0.5,
+        dodge=0.4,
+    )
+    ww_medians_logged = []
+    for study in plot_df_ww["Subset"].unique():
+        median = np.median(
+            plot_df_ww[(plot_df_ww["Subset"] == study)]["Relative Abundance"]
+        )
+
+        ww_medians_logged.append(median)
+        ww_medians.append(10**median)
+    plot_medians(axs[1], ww_medians_logged)
+    # axs[0].set_title("a", x=-0.31, y=0.9)
+    # axs[1].set_title("b", x=-0.31, y=0.9)
+    axs[0].set_title(
+        "a (Swabs)", x=-0.31, y=0.95, fontsize=10, ha="left", fontweight="heavy"
+    )
+    axs[1].set_title(
+        "b (Wastewater)", x=-0.31, y=0.95, fontsize=10, ha="left", fontweight="bold"
+    )
+    for ax in axs:
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_visible(False)
+        ax.set_ylabel("")
+        if ax == axs[1]:
+            y_labels = [
+                (
+                    label.get_text().rsplit(" ", 1)[0]
+                    + "\n"
+                    + label.get_text().rsplit(" ", 1)[1]
+                    if " " in label.get_text()
+                    else label.get_text()
+                )
+                for label in ax.get_yticklabels()
+            ]
+            ax.set_yticks(ax.get_yticks())
+            ax.set_yticklabels(y_labels)
+        ax.tick_params(axis="y", which="both", left=False, right=False, labelleft=True)
+    xmin, xmax = -10, 0
+    for x in np.arange(math.ceil(xmin), 1, 1):
+        axs[0].axvline(
+            x=x, color="black", linestyle="--", linewidth=0.3, alpha=0.2, zorder=-1
+        )
+        axs[1].axvline(
+            x=x, color="black", linestyle="--", linewidth=0.3, alpha=0.2, zorder=-1
+        )
+    for ax in axs:
+        ax.set_xlim(xmin, xmax)
+        current_xticks = ax.get_xticks()
+        ax.set_xticks(current_xticks)
+        ax.set_xticklabels(
+            [
+                "$10^{{{}}}$".format(int(value)) if value != 0 else "1"
+                for value in current_xticks
+            ]
+        )
+    legend = axs[0].legend(
+        title="Number of\nswabs",
+        loc="center left",
+        bbox_to_anchor=(1, 0.5),
+        ncol=1,
+        frameon=False,
+    )
+    legend._legend_box.align = "left"
+    plt.tight_layout()
+    plt.savefig("fig/fig_7.png", dpi=600)
+
+
+return_fig_7()
+
+
+
+```
+
+
+```{python}
+def create_table_3():
+    plot_df_swab, plot_df_ww = get_fig_7_dfs()
+
+    table_data = defaultdict()
+
+    for subset in plot_df_swab["Subset"].unique():
+        for swab_sample_size in N_SWABS:
+            subset_df = plot_df_swab.query(
+                "Subset == @subset and `Sample Size` == @swab_sample_size"
+            )
+            median, iqr = subset_df["Relative Abundance"].median(), subset_df[
+                "Relative Abundance"
+            ].quantile(0.75) - subset_df["Relative Abundance"].quantile(0.25)
+            table_data[(subset, swab_sample_size)] = (median, iqr)
+
+    ww_medians = []
+
+    for study in plot_df_ww["Subset"].unique():
+        median = np.median(
+            plot_df_ww[(plot_df_ww["Subset"] == study)]["Relative Abundance"]
+        )
+        ww_medians.append(median)
+
+    avg_median = gmean(ww_medians)
+
+    columns = None
+    table_output = []
+
+    for key, (median, iqr) in table_data.items():
+        sample, swab_sample_size = key
+        sample = sample.replace("\n", " ")
+
+        if columns is None:
+            columns = "Sample Type\tSample Size\tMedian\tIQR\tDiff to Rothman\tDiff to Crits-Christoph\tDiff to Average"
+            table_output.append(columns)
+
+        rothman_median = ww_medians[0]
+        crits_median = ww_medians[1]
+        diff_to_rothman = round((median / rothman_median) / 5) * 5
+        diff_to_crits = round((median / crits_median) / 5) * 5
+        diff_to_avg = round((median / avg_median) / 5) * 5
+        table_output.append(
+            f"{sample}\t{swab_sample_size}\t{median:.2e}\t{iqr:.2e}\t{diff_to_rothman}\t{diff_to_crits}\t{diff_to_avg}"
+        )
+
+    formatted_table = "\n".join(table_output)
+    print(formatted_table)
+
+
+create_table_3()
+
+```
+
+
+
+```{python}
+
+def return_fig_s1():
+    studies = SWAB_STUDY_TITLES
+    ra_lists = return_study_ras()
+    composite_ras = return_composite_ras()
+    studies.append("Composite")
+    ra_lists.append(composite_ras)
+
+    raw_distributions = []
+    for ras in ra_lists:
+        samples = get_logit_normal_samples(ras)
+        raw_distributions.append(samples)
+
+
+    fig, ax = plt.subplots(1, 1, figsize=(7, 3), dpi=600)
+    log_distributions = [np.log10(distribution) for distribution in raw_distributions]
+    log_rel_abuns = [np.log10(ras) for ras in ra_lists]
+
+    viridis_palette = sns.color_palette("viridis", n_colors=len(studies)-1)
+    composite_study_color = "#aedc31"
+    viridis_palette.append(composite_study_color)
+
+    sns.violinplot(data=log_distributions, ax=ax, inner=None, palette=viridis_palette, orient='h', zorder=1, linewidth=0.5, cut=0, alpha=1, fill=False, bw_adjust=1.5)
+
+    sns.stripplot(data=log_rel_abuns, ax=ax, jitter=True, palette=viridis_palette, orient='h', alpha=0.7, zorder=2)
+    ax.set_yticklabels(studies)
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_visible(False)
+    ax.set_ylabel("")
+
+    y_labels = [
+        (
+            label.get_text().rsplit(" ", 1)[0]
+            + "\n"
+            + label.get_text().rsplit(" ", 1)[1]
+            if " " in label.get_text()
+            else label.get_text()
+        )
+        for label in ax.get_yticklabels()
+    ]
+    ax.set_yticklabels(y_labels)
+
+    ax.tick_params(axis="y", which="both", left=False, right=False, labelleft=True)
+
+    current_xticks = ax.get_xticks()
+    ax.set_xticklabels(
+            [
+                "$10^{{{}}}$".format(int(value)) if value != 0 else "1"
+                for value in current_xticks
+            ]
+        )
+    xmin, xmax = ax.get_xlim()
+    for x in np.arange(math.ceil(xmin), 1, 1):
+        ax.axvline(
+            x=x, color="black", linestyle="--", linewidth=0.3, alpha=0.2, zorder=-1
+        )
+    ax.set_xlabel("Relative Abundance")
+
+    plt.tight_layout()
+    plt.savefig("fig/fig_s1.png", dpi=600)
+    plt.clf()
+
+return_fig_s1()
+```
+
+
+```{python}
+
+def create_table_s1():
+    plot_df_swab, plot_df_ww = get_fig_2_dfs()
+
+    table_data = defaultdict()
+
+    for subset in plot_df_swab["Subset"].unique():
+        for swab_sample_size in N_SWABS:
+            subset_df = plot_df_swab.query("Subset == @subset and `Sample Size` == @swab_sample_size")
+            median = subset_df["Relative Abundance"].median()
+            iqr = subset_df["Relative Abundance"].quantile(0.75) - subset_df["Relative Abundance"].quantile(0.25)
+            table_data[(subset, swab_sample_size)] = (median, iqr)
+
+    ww_medians = []
+
+    for study in plot_df_ww["Subset"].unique():
+        median = np.median(
+            plot_df_ww[(plot_df_ww["Subset"] == study)]["Relative Abundance"]
+        )
+        ww_medians.append(median)
+
+    avg_median = gmean(ww_medians)
+    print(avg_median)
+
+    columns = None
+    table_output = []
+
+
+    for key, (median, iqr) in table_data.items():
+        sample, swab_sample_size = key
+        sample = sample.replace("\n", " ")
+
+        if columns is None:
+            columns = "Sample Type\tSample Size\tMedian\tIQR\tDiff to Rothman\tDiff to Crits-Christoph\tDiff to Average"
+            table_output.append(columns)
+
+        rothman_median = ww_medians[0]
+        crits_median = ww_medians[1]
+        diff_to_rothman = round((median / rothman_median) / 5) * 5
+        diff_to_crits = round((median / crits_median) / 5) * 5
+        diff_to_avg = round((median / avg_median) / 5) * 5
+        table_output.append(f"{sample}\t{swab_sample_size}\t{median:.2e}\t{iqr:.2e}\t{diff_to_rothman}\t{diff_to_crits}\t{diff_to_avg}")
+
+    formatted_table = "\n".join(table_output)
+    print(formatted_table)
+
+create_table_s1()
+
+```
+
