@@ -351,7 +351,7 @@ def return_study_ras():
 
 
 def return_ww_p2ra():
-    df_wastewater = pd.read_csv("data/2024-05-07-fits.tsv", sep="\t")
+    df_wastewater = pd.read_csv("data/2024-05-07-fits.tsv", sep="\t") # Taken from p2ra-manuscript. Based on the v1 pipeline.
     df_rothman_ras = df_wastewater[
         (df_wastewater["study"] == "rothman")
         & (df_wastewater["location"] == "Overall")
