@@ -168,3 +168,7 @@ cython_debug/
 # macOS
 .DS_Store
 
+
+# Large fit file
+2024-06-14-figures-for-swab-post/data/2024-06-09-fits.tsv
+2024-06-14-figures-for-swab-post/data/2024-05-07-fits.tsv
