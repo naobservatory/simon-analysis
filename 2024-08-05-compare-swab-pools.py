@@ -31,25 +31,7 @@ class PathogenProperties:
 class SamplingParameters:
     """Parameters for sampling in pathogen detection"""
 
-    shedding_values: List[float] = field(
-        default_factory=lambda: [
-            5e-06,
-            1e-04,
-            2e-04,
-            3e-04,
-            7e-04,
-            8e-04,
-            1e-03,
-            6e-03,
-            8e-03,
-            1e-02,
-            2e-02,
-            3e-02,
-            7e-02,
-            4e-01,
-            8e-01,
-        ]
-    )
+    shedding_values: List[float] = field(default_factory=lambda: swab_ras)
     sigma_shedding_values: float = 0.05
     shedding_duration: int = 7
     sigma_shedding_duration: float = 0.05
