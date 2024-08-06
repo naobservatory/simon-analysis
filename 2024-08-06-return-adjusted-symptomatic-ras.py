@@ -7,7 +7,6 @@ from collections import namedtuple
 from collections import defaultdict
 
 
-ASYMPTOMATIC_SHARE = 0.35
 DOUBLING_PERIOD_D = 3
 DEBUG = None
 
