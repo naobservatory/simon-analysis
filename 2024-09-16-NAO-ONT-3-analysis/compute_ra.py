@@ -2,6 +2,8 @@
 
 import pandas as pd
 
+# aws s3 sync s3://nao-restricted/NAO-ONT-20240912-DCS_RNA3/ . --exclude "*raw/*" --exclude "*pod5/*" --exclude "*work/*"
+# gunzip cladecounts-2024-06/NAO-ONT-20240912-DCS_RNA3.tsv.gz
 
 n_reads = (
     152254  # length of seq file divided by four (each read has four lines)
