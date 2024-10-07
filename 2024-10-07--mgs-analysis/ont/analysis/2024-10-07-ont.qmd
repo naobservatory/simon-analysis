@@ -1,0 +1,708 @@
+---
+title: "Workflow of Roasrio et al. (2018)"
+subtitle: "Whole blood from US (RNA)"
+author: "Harmon Bhasin"
+date: 2024-09-12
+format:
+  html:
+    toc: true # table of contents
+    toc-title: "Table of contents" # table of contents title
+    number-sections: true # number sections
+    number-depth: 3 # number depth to show in table of contents
+    toc-location: right # table of contents location
+    page-layout: full # full page layout
+    code-fold: true # Keep option to fold code (i.e. show or hide it; default: hide)
+    code-tools: true # Code menu in the header of your document that provides various tools for readers to interact with the source code
+    code-link: true # Enables hyper-linking of functions within code blocks to their online documentation
+    df-print: paged # print data frame
+    fig-format: svg
+    other-links:
+      - text: Paper
+        href: https://google.com
+      - text: Data
+        href: https://google.com
+    code-links:
+      - text: Code for this post
+        icon: file-code
+        href: https://google.com
+editor: 
+  visual: true
+  render-on-save: true
+comments:
+  hypothesis: true # hypothesis
+execute: 
+  freeze: auto
+  cache: true
+title-block-banner: "#de2d26"
+---
+
+Pulled from here, 'https://data.securebio.org/wills-private-notebook/notebooks/2024-08-07_bmc-2.html'.
+
+```{r}
+#| label: load-packages
+#| include: false
+library(Biostrings)
+library(tidyverse)
+library(cowplot)
+library(patchwork)
+library(fastqcr)
+library(RColorBrewer)
+library(dplyr)
+
+head_dir <- "/Users/harmonbhasin/work/securebio/"
+source(sprintf("%s/sampling-strategies/scripts/aux_plot-theme.R", head_dir))
+
+theme_base <- theme_base + theme(
+  aspect.ratio = NULL,
+  plot.title = element_text(hjust=0, face="plain", size=rel(1.2))
+  )
+theme_kit <- theme_base + theme(
+  axis.text.x = element_text(hjust = 1, angle = 45),
+  axis.title.x = element_blank(),
+)
+tnl <- theme(legend.position = "none")
+
+# Scales and palettes
+scale_fill_st <- purrr::partial(scale_fill_brewer, name = "Sample Type",
+                                      palette = "Set1")
+scale_color_st <- purrr::partial(scale_color_brewer, name = "Sample Type",
+                                      palette = "Set1")
+scale_shape_st <- purrr::partial(scale_shape_discrete, name = "Sample Type")
+scale_fill_ribo <- purrr::partial(scale_fill_brewer, name="Ribodepletion", 
+                                palette="Dark2")
+scale_color_ribo <- purrr::partial(scale_color_brewer, name="Ribodepletion", 
+                                palette="Dark2")
+scale_shape_ribo <- purrr::partial(scale_shape_discrete, name="Ribodepletion")
+```
+
+# Raw data & preprocessing
+
+## Read counts
+
+```{r}
+#| label: prepare-libraries
+
+data_dir <- "/Users/harmonbhasin/work/securebio/analysis-for-lenni/prussin2019/analysis"
+input_dir <- file.path(data_dir, "data/input")
+libraries_path <- file.path(input_dir, "libraries.csv")
+
+# Import libraries and extract metadata from sample names
+libraries_raw <- read_csv(libraries_path, show_col_types = FALSE)
+libraries <- libraries_raw 
+```
+
+```{r}
+#| warning: false
+#| label: read-qc-data
+
+# Data input paths
+results_dir <- file.path(data_dir, "data/results")
+qc_dir <- file.path(results_dir, "qc")
+hv_dir <- file.path(results_dir, "hv")
+basic_stats_path <- file.path(qc_dir, "qc_basic_stats.tsv.gz")
+adapter_stats_path <- file.path(qc_dir, "qc_adapter_stats.tsv.gz")
+quality_base_stats_path <- file.path(qc_dir, "qc_quality_base_stats.tsv.gz")
+quality_seq_stats_path <- file.path(qc_dir, "qc_quality_sequence_stats.tsv.gz")
+
+# Import QC data
+stages <- c("raw_concat", "cleaned", "dedup", "ribo_initial", "ribo_secondary")
+basic_stats <- read_tsv(basic_stats_path, show_col_types = FALSE) %>%
+  inner_join(libraries, by="sample") %>% arrange(sample) %>%
+  mutate(stage = factor(stage, levels = stages),
+         sample = fct_inorder(sample))
+adapter_stats <- read_tsv(adapter_stats_path, show_col_types = FALSE) %>%
+  inner_join(libraries, by="sample") %>% arrange(sample) %>%
+  mutate(stage = factor(stage, levels = stages),
+         read_pair = fct_inorder(as.character(read_pair)))
+quality_base_stats <- read_tsv(quality_base_stats_path, show_col_types = FALSE) %>%
+  inner_join(libraries, by="sample") %>% arrange(sample) %>%
+  mutate(stage = factor(stage, levels = stages),
+         read_pair = fct_inorder(as.character(read_pair)))
+quality_seq_stats <- read_tsv(quality_seq_stats_path, show_col_types = FALSE) %>%
+  inner_join(libraries, by="sample") %>% arrange(sample) %>%
+  mutate(stage = factor(stage, levels = stages),
+         read_pair = fct_inorder(as.character(read_pair)))
+
+# Get key values for readout
+basic_stats_raw <- basic_stats %>% filter(stage == "raw_concat")
+raw_read_counts <- basic_stats_raw %>% ungroup %>%
+  summarize(rmin = min(n_read_pairs), rmax=max(n_read_pairs),
+            rmean=mean(n_read_pairs), 
+            rtot = sum(n_read_pairs),
+            btot = sum(n_bases_approx),
+            dmin = min(percent_duplicates), dmax=max(percent_duplicates),
+            dmean=mean(percent_duplicates), .groups = "drop")
+```
+
+```{r}
+#| fig-width: 7
+#| warning: false
+#| label: plot-basic-stats
+
+# Prepare data
+basic_stats_raw_metrics <- basic_stats_raw %>%
+  select(sample,
+         `# Read pairs` = n_read_pairs,
+         `Total base pairs\n(approx)` = n_bases_approx) %>%
+  pivot_longer(-sample, names_to = "metric", values_to = "value") %>%
+  mutate(metric = fct_inorder(metric))
+
+# Set up plot templates
+g_basic <- ggplot(basic_stats_raw_metrics, aes(x=sample, y=value)) +
+  geom_col(position = "dodge") +
+  scale_x_discrete() +
+  scale_y_continuous(expand=c(0,0)) +
+  scale_fill_st() +
+  expand_limits(y=c(0,100)) +
+  theme_kit + theme(
+    axis.title.y = element_blank(),
+    strip.text.y = element_text(face="plain")
+  )
+g_basic
+```
+
+```{r}
+#| label: count-reads
+
+# Count read losses
+n_reads_rel <- basic_stats %>% 
+  select(sample, 
+         stage, percent_duplicates, n_read_pairs) %>%
+  group_by(sample) %>% 
+  arrange(sample, stage) %>%
+  mutate(p_reads_retained = n_read_pairs / lag(n_read_pairs),
+         p_reads_lost = 1 - p_reads_retained)
+
+# Aggregate over sample types
+n_reads_rel_total <- n_reads_rel %>%
+  group_by(stage) %>%
+  summarize(n_read_pairs = sum(n_read_pairs)) %>%
+  mutate(p_reads_retained = n_read_pairs / lag(n_read_pairs),
+         p_reads_lost = 1 - p_reads_retained,
+         sample_type = "All sample types")
+```
+
+```{r}
+#| label: preproc-figures
+#| warning: false
+#| fig-height: 3
+#| fig-width: 6
+
+g_stage_trace <- ggplot(basic_stats, 
+                        aes(x=stage, group=sample)) +
+  scale_color_st() +
+  theme_kit
+
+# Plot reads over preprocessing
+g_reads_stages <- g_stage_trace +
+  geom_line(aes(y=n_read_pairs)) +
+  scale_y_continuous("# Read pairs", expand=c(0,0), limits=c(0,NA))
+g_reads_stages
+
+# Plot relative read losses during preprocessing
+g_reads_rel <- ggplot(n_reads_rel, 
+                      aes(x=sample, y=p_reads_lost)) +
+  geom_col(position="dodge") +
+  scale_y_continuous("% Total Reads Lost", expand=c(0,0), 
+                     labels = function(x) x*100) +
+  scale_fill_st() +
+  theme_kit
+g_reads_rel
+```
+
+## Duplication levels
+
+As in the previous analysis, FASTQC-measured duplication levels were very high in the raw data, and cleaning with FASTP had little effect on duplication levels:
+
+```{r}
+#| fig-width: 6
+#| warning: false
+#| label: plot-duplication
+
+# Prepare data
+
+g_dup <- ggplot(basic_stats, aes(x=sample, y=percent_duplicates, fill=stage)) +
+  geom_col(position="dodge") +
+  scale_y_continuous(name= "% Duplicates (FASTQC)", expand=c(0,0), breaks=seq(0,100,20), limits=c(0,100)) +
+  scale_fill_brewer(palette="Set3", labels=c("Raw", "Cleaned"), name="Stage") +
+  theme_kit
+g_dup
+```
+
+## Adapters
+
+Adapter levels in the raw reads were fairly high, but were very effectively removed by preprocessing with FASTP:
+
+```{r}
+#| label: plot-adapters
+
+g_qual <- ggplot(mapping=aes(linetype=read_pair, group=interaction(sample,read_pair))) + 
+  scale_color_st() + scale_linetype_discrete(name = "Read Pair") +
+  guides(color=guide_legend(nrow=2,byrow=TRUE),
+         linetype = guide_legend(nrow=2,byrow=TRUE)) +
+  theme_base
+
+# Visualize adapters
+g_adapters <- g_qual + 
+  geom_line(aes(x=position, y=pc_adapters), data=adapter_stats) +
+  scale_y_continuous(name="% Adapters", limits=c(0,20),
+                     breaks = seq(0,50,10), expand=c(0,0)) +
+  scale_x_continuous(name="Position", limits=c(0,NA),
+                     breaks=seq(0,140,20), expand=c(0,0)) +
+  facet_grid(stage~adapter)
+g_adapters
+
+```
+
+## Quality
+
+Initial read qualities were high, and remained so after preprocessing with FASTP:
+
+```{r}
+#| label: plot-quality
+
+g_quality_base <- g_qual +
+  geom_hline(yintercept=25, linetype="dashed", color="red") +
+  geom_hline(yintercept=30, linetype="dashed", color="red") +
+  geom_line(aes(x=position, y=mean_phred_score), data=quality_base_stats) +
+  scale_y_continuous(name="Mean Phred score", expand=c(0,0), limits=c(10,45)) +
+  scale_x_continuous(name="Position", limits=c(0,NA),
+                     breaks=seq(0,140,20), expand=c(0,0)) +
+  facet_grid(stage~.)
+g_quality_base
+
+g_quality_seq <- g_qual +
+  geom_vline(xintercept=25, linetype="dashed", color="red") +
+  geom_vline(xintercept=30, linetype="dashed", color="red") +
+  geom_line(aes(x=mean_phred_score, y=n_sequences), data=quality_seq_stats) +
+  scale_x_continuous(name="Mean Phred score", expand=c(0,0)) +
+  scale_y_continuous(name="# Sequences", expand=c(0,0)) +
+  facet_grid(stage~., scales = "free_y")
+g_quality_seq
+```
+
+# Taxonomic profiling
+
+## Domain-level classification
+
+The taxonomic profiling workflow has changed substantially since the original analysis of the BMC data, so I was interested to see how things would look in the new analysis.
+
+```{r}
+#| label: taxonomy-domains
+#| fig-height: 5.5
+
+# Import Bracken data
+bracken_path <- file.path(results_dir, "taxonomy/bracken_reports_merged.tsv.gz")
+bracken_tab <- lapply(bracken_path, read_tsv, show_col_types = FALSE) %>% bind_rows %>%
+  inner_join(libraries, by="sample") %>% 
+  mutate(ribosomal_label = ifelse(ribosomal, "Ribosomal", "Non-ribosomal"))
+
+# Import Kraken data
+kraken_paths <- file.path(results_dir, "taxonomy/kraken_reports_merged.tsv.gz")
+kraken_tab <- lapply(kraken_paths, read_tsv, show_col_types = FALSE) %>% bind_rows %>%
+  inner_join(libraries, by="sample") %>% 
+  mutate(ribosomal_label = ifelse(ribosomal, "Ribosomal", "Non-ribosomal"))
+
+# Extract taxon reads from Bracken and unassigned from Kraken
+class_tab <- bracken_tab %>%
+  select(sample,
+         n_reads=new_est_reads, name, ribosomal_label)
+unclass_tab <- kraken_tab %>% filter(taxid == 0) %>%
+  select(sample,
+         n_reads=n_reads_clade, name, ribosomal_label) %>%
+  mutate(name=str_to_title(name))
+taxa_tab_raw <- bind_rows(class_tab, unclass_tab)
+taxon_levels <- expand_grid(
+  taxon = c("Unclassified", "Bacteria", "Archaea", "Eukaryota", "Viruses"),
+  ribo  = c("Ribosomal", "Non-ribosomal") 
+) %>% mutate(label = paste0(taxon, " (", ribo, ")")) %>% pull(label)
+taxa_tab <- mutate(taxa_tab_raw, 
+                   label = paste0(name, " (", ribosomal_label, ")"),
+                   label = factor(label, levels = taxon_levels))
+taxa_tab_display <- taxa_tab
+
+# Plot
+g_bracken <- ggplot(mapping = aes(x=sample, y=n_reads, fill=label)) +
+  scale_y_continuous(name="% Reads", label = function(y) y*100) +
+  guides(fill = guide_legend(ncol=3)) +
+  theme_kit
+g_bracken_1 <- g_bracken +
+    geom_col(data = taxa_tab_display, position = "fill", width=1) +
+    scale_fill_brewer(palette="Set3", name="Taxon") +
+    ggtitle("Taxonomic composition (all reads)")
+g_bracken_1
+
+# Re-plot restricting to classified reads
+palette_class <- brewer.pal(10, "Set3") %>% tail(-2)
+taxa_tab_assigned <- taxa_tab_display %>% filter(!grepl("Unclassified", label))
+g_bracken_2 <- g_bracken +
+    geom_col(data = taxa_tab_assigned, position = "fill", width=1) +
+    scale_fill_manual(name="Taxon", values=palette_class) +
+    ggtitle("Taxonomic composition (classified reads)")
+g_bracken_2
+```
+
+## Total viral content
+
+```{r}
+#| label: plot-viral-content
+
+# Viral content across all reads
+p_reads_viral_all <- taxa_tab %>% mutate(viral = name == "Viruses") %>%
+  group_by(sample, viral) %>%
+  summarize(n_reads = sum(n_reads), .groups = "drop_last") %>% 
+  mutate(p_reads = n_reads/sum(n_reads)) %>%
+  filter(viral)
+p_reads_viral_assigned <- taxa_tab_assigned %>% 
+  mutate(viral = name == "Viruses") %>%
+  group_by(sample, viral) %>%
+  summarize(n_reads = sum(n_reads), .groups = "drop_last") %>% 
+  mutate(p_reads = n_reads/sum(n_reads)) %>%
+  filter(viral)
+
+# Plot
+p_reads_viral_plot <- p_reads_viral_all %>% mutate(read_set = "All reads") %>%
+  bind_rows(p_reads_viral_assigned %>% mutate(read_set = "Classified reads"))
+g_reads_viral <- ggplot(p_reads_viral_plot, 
+                        aes(x=sample, y=p_reads)) +
+  geom_point() +
+  scale_y_log10(name="Viral read fraction") +
+  scale_color_st() +
+  scale_linetype_discrete(name="Ribodepletion") +
+  guides(color=guide_legend(nrow=2), linetype=guide_legend(nrow=2)) +
+  facet_grid(.~read_set) +
+  theme_kit
+g_reads_viral
+```
+
+## Taxonomic composition of viruses
+
+```{r}
+#| label: prepare-viral-taxonomy-plotting
+
+# Set up base plot -- EDIT BY METADATA
+g_comp_base <- ggplot(mapping = aes(x=sample, y=p_reads, fill=label)) +
+  guides(fill = guide_legend(ncol=3)) +
+  theme_kit
+
+# Specify palette
+palette_viral <- c(brewer.pal(12, "Set3"), brewer.pal(8, "Dark2"))
+scale_fill_viral <- purrr::partial(scale_fill_manual, values = palette_viral)
+
+# Set up composition scale
+scale_y_composition <- purrr::partial(scale_y_continuous, limits = c(0,1.01),
+                                      breaks = seq(0,1,0.2), expand = c(0,0),
+                                      labels = function(y) y*100)
+
+# Set up geom
+geom_composition <- purrr::partial(geom_col, position = "stack", width = 1)
+```
+
+```{r}
+#| label: extract-viral-taxa
+
+# Specify grouping columns -- EDIT BY METADATA
+
+# Get viral taxonomy
+viral_taxa <- read_tsv("/Users/harmonbhasin/work/securebio/analysis-for-lenni/total-virus-db.tsv.gz", show_col_types = FALSE)
+
+# Prepare viral Kraken tab
+kraken_tab_viral_raw <- filter(kraken_tab, taxid %in% viral_taxa$taxid)
+kraken_tab_viral_sum <- kraken_tab_viral_raw %>%
+  group_by(taxid, name, rank, sample) %>%
+  summarize(n_reads_clade = sum(n_reads_clade),
+            n_reads_direct = sum(n_reads_direct),
+            n_minimizers_total = sum(n_minimizers_total),
+            n_minimizers_distinct = sum(n_minimizers_distinct),
+            n_reads_clade_ribosomal = sum(n_reads_clade[ribosomal]),
+            .groups = "drop") %>%
+  mutate(p_reads_clade_ribosomal = n_reads_clade_ribosomal/n_reads_clade)
+kraken_tab_viral_total <- kraken_tab_viral_sum %>%
+  filter(taxid == 10239) %>%
+  select(sample, n_reads_viral = n_reads_clade)
+kraken_tab_viral <- kraken_tab_viral_sum %>%
+  inner_join(kraken_tab_viral_total, by = "sample") %>%
+  mutate(p_reads_viral = n_reads_clade/n_reads_viral)
+kraken_tab_viral_cleaned <- kraken_tab_viral %>%
+  select(name, taxid, rank, sample, 
+         n_reads_clade, n_reads_viral, p_reads_viral, p_reads_clade_ribosomal)
+
+# Subset to specific taxonomic ranks
+viral_classes <- kraken_tab_viral_cleaned %>% filter(rank == "C")
+viral_families <- kraken_tab_viral_cleaned %>% filter(rank == "F")
+```
+
+```{r}
+#| label: viral-family-composition
+#| fig-height: 6
+#| fig-width: 8
+
+major_threshold <- 0.05
+
+# Identify major viral families and collapse others
+viral_families_major <- viral_families %>%
+  group_by(name, taxid) %>%
+  filter(max(p_reads_viral) >= major_threshold) %>% ungroup
+viral_families_minor <- viral_families_major %>%
+  group_by(sample, n_reads_viral) %>%
+  summarize(n_reads_clade = n_reads_viral[1] - sum(n_reads_clade),
+            p_reads_viral = 1 - sum(p_reads_viral), .groups = "drop") %>%
+  mutate(name = "Other", taxid = NA, rank = "F")
+viral_families_levels <- viral_families_major %>% pull(name) %>% sort %>% 
+  unique %>% append("Other")
+viral_families_out <- bind_rows(viral_families_major, viral_families_minor) %>%
+  mutate(name = factor(name, levels = viral_families_levels))
+
+# Prepare data for plotting
+viral_families_display <- viral_families_out %>%
+  dplyr::rename(p_reads = p_reads_viral, label= name) 
+
+# Plot
+g_families_all <- g_comp_base + 
+  geom_composition(data=viral_families_display) +
+  ggtitle("Viral family composition (all viral reads)") +
+  scale_y_composition(name="% Viral Reads") +
+  scale_fill_viral(name="Viral family")
+g_families_all
+```
+
+# Human-infecting virus reads
+
+## Overall relative abundance
+
+Next, I calculated the number of human-infecting virus reads as a fraction of total raw reads:
+
+```{r}
+#| label: prepare-hv
+#| edit-by-metadata: false
+
+# Import and format reads
+hv_reads_path <- file.path(hv_dir, "hv_hits_putative_collapsed.tsv.gz")
+mrg_hv <- read_tsv(hv_reads_path, show_col_types = FALSE) %>%
+  inner_join(libraries, by="sample") %>%
+  mutate(kraken_label = ifelse(assigned_hv, "Kraken2 HV assignment",
+                               "No Kraken2 assignment"),
+         adj_score_max = pmax(adj_score_fwd, adj_score_rev),
+         highscore = adj_score_max >= 20)
+```
+
+```{r}
+#| label: count-hv-reads
+#| fig-width: 8
+#| warning: false
+#| edit-by-metadata: false
+
+# Get read counts and fractions
+read_counts_raw <- select(basic_stats_raw, sample, n_reads_raw = n_read_pairs)
+read_counts_hv <- count(mrg_hv, sample, name="n_reads_hv")
+read_counts <- left_join(read_counts_raw, read_counts_hv, by="sample") %>%
+  mutate(n_reads_hv = replace_na(n_reads_hv, 0)) %>%
+  inner_join(libraries, by="sample") %>%
+  select(sample, n_reads_raw, n_reads_hv) %>%
+  mutate(n_samples = 1, p_reads_total = n_reads_hv/n_reads_raw)
+
+# Aggregate read counts
+read_counts_agg <- read_counts %>%
+  group_by(sample) %>%
+  summarize(n_reads_raw = sum(n_reads_raw),
+            n_reads_hv = sum(n_reads_hv), 
+            n_samples = sum(n_samples), .groups="drop") %>%
+  mutate(p_reads_total = n_reads_hv/n_reads_raw)
+```
+
+```{r}
+#| label: plot-hv-fraction
+#| edit-by-metadata: true
+
+# Plot by date
+g_read_counts <- ggplot(read_counts,
+                        aes(x=sample, y=p_reads_total)) +
+  geom_point() +
+  scale_y_log10(name = "Unique human-viral read fraction") +
+  scale_color_ribo() + scale_shape_ribo() + scale_linetype_discrete(name="Ribodepletion") +
+  theme_kit
+g_read_counts
+
+# Plot overall
+g_read_counts_agg <- ggplot(read_counts_agg, 
+                        aes(x=sample, y=p_reads_total)) +
+  geom_point() +
+  scale_y_log10(name = "Unique human-viral read fraction (all dates)") +
+  theme_kit
+g_read_counts_agg
+
+# Summarize for text
+read_counts_display <- read_counts_agg %>%
+  summarize(n_reads_raw = sum(n_reads_raw), n_reads_hv = sum(n_reads_hv)) %>%
+  mutate(p_reads_total = n_reads_hv/n_reads_raw,
+         p_reads_display = p_reads_total %>% signif(3) %>% format(scientific=TRUE))
+```
+
+
+## Overall taxonomy and composition
+
+```{r}
+#| label: raise-hv-taxa
+#| edit-by-metadata: false
+
+# Filter samples and add viral taxa information
+samples_keep <- read_counts %>% filter(n_reads_hv > 5) %>% pull(sample)
+mrg_hv_named <- mrg_hv %>% filter(sample %in% samples_keep) %>% left_join(viral_taxa, by="taxid") 
+
+# Discover viral species & genera for HV reads
+raise_rank <- function(read_db, taxid_db, out_rank = "species", verbose = FALSE){
+  # Get higher ranks than search rank
+  ranks <- c("subspecies", "species", "subgenus", "genus", "subfamily", "family", "suborder", "order", "class", "subphylum", "phylum", "kingdom", "superkingdom")
+  rank_match <- which.max(ranks == out_rank)
+  high_ranks <- ranks[rank_match:length(ranks)]
+  # Merge read DB and taxid DB
+  reads <- read_db %>% select(-parent_taxid, -rank, -name) %>%
+    left_join(taxid_db, by="taxid")
+  # Extract sequences that are already at appropriate rank
+  reads_rank <- filter(reads, rank == out_rank)
+  # Drop sequences at a higher rank and return unclassified sequences
+  reads_norank <- reads %>% filter(rank != out_rank, !rank %in% high_ranks, !is.na(taxid))
+  while(nrow(reads_norank) > 0){ # As long as there are unclassified sequences...
+    # Promote read taxids and re-merge with taxid DB, then re-classify and filter
+    reads_remaining <- reads_norank %>% mutate(taxid = parent_taxid) %>%
+      select(-parent_taxid, -rank, -name) %>%
+      left_join(taxid_db, by="taxid")
+    reads_rank <- reads_remaining %>% filter(rank == out_rank) %>%
+      bind_rows(reads_rank)
+    reads_norank <- reads_remaining %>%
+      filter(rank != out_rank, !rank %in% high_ranks, !is.na(taxid))
+  }
+  # Finally, extract and append reads that were excluded during the process
+  reads_dropped <- reads %>% filter(!seq_id %in% reads_rank$seq_id)
+  reads_out <- reads_rank %>% bind_rows(reads_dropped) %>%
+    select(-parent_taxid, -rank, -name) %>%
+    left_join(taxid_db, by="taxid")
+  return(reads_out)
+}
+hv_reads_species <- raise_rank(mrg_hv_named, viral_taxa, "species")
+hv_reads_genus <- raise_rank(mrg_hv_named, viral_taxa, "genus")
+hv_reads_family <- raise_rank(mrg_hv_named, viral_taxa, "family")
+```
+
+```{r}
+#| label: hv-family
+#| fig-height: 5
+#| fig-width: 7
+#| edit-by-metadata: false
+
+threshold_major_family <- 0.02
+
+# Count reads for each human-viral family
+hv_family_counts <- hv_reads_family %>% 
+  group_by(name, taxid, sample) %>%
+  count(name = "n_reads_hv") %>%
+  group_by(sample) %>%
+  mutate(p_reads_hv = n_reads_hv/sum(n_reads_hv))
+hv_family_counts_collapsed <- hv_family_counts %>% 
+  mutate(minor = p_reads_hv < threshold_major_family,
+         name_display = ifelse(minor, "Other", name),
+         taxid_display = ifelse(minor, NA, taxid)) %>%
+  group_by(sample, name_display, taxid_display) %>%
+  summarize(n_reads_hv = sum(n_reads_hv), p_reads_hv = sum(p_reads_hv), .groups = "drop")
+hv_family_levels <- hv_family_counts_collapsed %>% 
+  group_by(is.na(taxid_display), name_display) %>% summarize(.groups = "drop") %>%
+  pull(name_display)
+hv_family_counts_display <- hv_family_counts_collapsed %>%
+  dplyr::rename(p_reads = p_reads_hv, label = name_display) %>%
+  mutate(label = factor(label, levels = hv_family_levels))
+
+# Get most prominent families for text
+hv_family_counts_collate <- hv_family_counts %>%
+  group_by(name, taxid, sample) %>%
+  summarize(n_reads_tot = sum(n_reads_hv),
+            p_reads_max = max(p_reads_hv), .groups = "drop") %>%
+  arrange(desc(n_reads_tot))
+
+# Plot
+g_hv_family <- g_comp_base +
+  geom_composition(data=hv_family_counts_display) +
+  ggtitle("Family composition of human-viral reads") +
+  scale_y_composition(name="% HV Reads") +
+  scale_fill_viral(name="Viral family")
+g_hv_family
+```
+
+```{r}
+#| label: hv-genus
+#| fig-height: 5
+#| fig-width: 7
+#| edit-by-metadata: false
+
+threshold_major_genus <- 0.1
+
+# Count reads for each human-viral genus
+hv_genus_counts <- hv_reads_genus %>% 
+  group_by(name, taxid, sample) %>%
+  count(name = "n_reads_hv") %>%
+  group_by(sample) %>%
+  mutate(p_reads_hv = n_reads_hv/sum(n_reads_hv))
+hv_genus_counts_collapsed <- hv_genus_counts %>% 
+  mutate(minor = p_reads_hv < threshold_major_genus,
+         name_display = ifelse(minor, "Other", name),
+         taxid_display = ifelse(minor, NA, taxid)) %>%
+  group_by(sample, name_display, taxid_display) %>%
+  summarize(n_reads_hv = sum(n_reads_hv), p_reads_hv = sum(p_reads_hv), .groups = "drop")
+hv_genus_levels <- hv_genus_counts_collapsed %>% 
+  group_by(is.na(taxid_display), name_display) %>% summarize(.groups = "drop") %>%
+  pull(name_display)
+hv_genus_counts_display <- hv_genus_counts_collapsed %>%
+  dplyr::rename(p_reads = p_reads_hv, label = name_display) %>%
+  mutate(label = factor(label, levels = hv_genus_levels))
+
+# Get most prominent families for text
+hv_genus_counts_collate <- hv_genus_counts %>%
+  group_by(name, taxid, sample) %>%
+  summarize(n_reads_tot = sum(n_reads_hv),
+            p_reads_max = max(p_reads_hv), .groups = "drop") %>%
+  arrange(desc(n_reads_tot))
+
+# Plot
+g_hv_genus <- g_comp_base +
+  geom_composition(data=hv_genus_counts_display) +
+  ggtitle("Genus composition of human-viral reads") +
+  scale_y_composition(name="% HV Reads") +
+  scale_fill_viral(name="Viral genus")
+g_hv_genus
+```
+
+```{r}
+#| label: compute-genus-hv-ra
+#| edit-by-metadata: false
+
+# Count in each sample
+n_path_genera <- hv_reads_genus %>% 
+  group_by(name, sample) %>%
+  count(name="n_reads_viral") %>%
+  pivot_wider(names_from="name", values_from="n_reads_viral", values_fill=0) %>%
+  pivot_longer(-all_of(c("sample")),
+               names_to="name", values_to="n_reads_viral") %>%
+  left_join(read_counts_raw, by=c("sample")) %>% 
+  left_join(viral_taxa, by="name")
+
+## Aggregate across dates
+n_path_genera_agg <- n_path_genera %>%
+  group_by(name, taxid, sample) %>%
+  summarize(n_reads_raw = sum(n_reads_raw),
+            n_reads_viral = sum(n_reads_viral), .groups = "drop") %>%
+  mutate(p_reads_total = n_reads_viral/n_reads_raw)
+```
+
+
+```{r}
+#| fig-height: 5
+#| label: plot-genus-hv-ra
+#| warning: false
+#| edit-by-metadata: true
+g_path_genera <- ggplot(n_path_genera_agg %>% filter(n_reads_viral > 0),
+                        aes(y=name, x=p_reads_total)) +
+  geom_point() +
+  scale_x_log10(name="Fraction of total reads") +
+  scale_color_st() + scale_shape_st() +
+  theme_kit
+g_path_genera
+```

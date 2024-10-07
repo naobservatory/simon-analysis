@@ -1,0 +1,18 @@
+{
+    "mode": "run",
+    "read_type": "single_end",
+    "base_dir": "s3://nao-mgs-simon/test_single_read",
+    "raw_dir": "s3://nao-mgs-simon/test_single_read/raw",
+    "ref_dir": "s3://nao-mgs-wb/index-20240714/output",
+    "library_tab": "s3://nao-mgs-simon/test_single_read/libraries.csv",
+    "sample_tab": "s3://nao-mgs-simon/test_single_read/libraries.csv",
+    "adapters": "/home/ec2-user/code/mgs-workflow-1/ref/adapters.fasta",
+    "n_reads_trunc": 0,
+    "n_reads_profile": 1000000,
+    "bt2_score_threshold": 20,
+    "blast_hv_fraction": 0,
+    "kraken_memory": "128 GB",
+    "quality_encoding": "phred33",
+    "r1_suffix": "_1",
+    "r2_suffix": "_2"
+}
