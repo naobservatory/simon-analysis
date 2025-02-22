@@ -20,12 +20,12 @@ check_fastq() {
         return 1
     fi
 
-    # Print filename and get first read ID (ensure we get a line starting with @)
+    # Print filename and get first read ID and sequence (first two lines after @)
     echo "$filename" | tee -a "$OUTPUT_FILE"
     if command -v gzcat &> /dev/null; then
-        gzcat "$TEMP_DIR/$filename" 2>/dev/null | grep "^@" | head -n 1 | tee -a "$OUTPUT_FILE"
+        gzcat "$TEMP_DIR/$filename" 2>/dev/null | awk '/^@/{print;getline;print;exit}' | tee -a "$OUTPUT_FILE"
     else
-        zcat "$TEMP_DIR/$filename" 2>/dev/null | grep "^@" | head -n 1 | tee -a "$OUTPUT_FILE"
+        zcat "$TEMP_DIR/$filename" 2>/dev/null | awk '/^@/{print;getline;print;exit}' | tee -a "$OUTPUT_FILE"
     fi
 
     # Clean up

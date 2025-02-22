@@ -67,9 +67,9 @@ while read -r accession; do
         if [ -f "$fastq_file" ]; then
             echo "$fastq_file" | tee -a "../../$OUTPUT_FILE"
             if command -v gzcat &> /dev/null; then
-                gzcat "$fastq_file" | head -n 1 | tee -a "../../$OUTPUT_FILE"
+                gzcat "$fastq_file" | head -n 2 | tee -a "../../$OUTPUT_FILE"
             else
-                zcat "$fastq_file" | head -n 1 | tee -a "../../$OUTPUT_FILE"
+                zcat "$fastq_file" | head -n 2 | tee -a "../../$OUTPUT_FILE"
             fi
             echo "---" | tee -a "../../$OUTPUT_FILE"
             rm "$fastq_file"
