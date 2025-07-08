@@ -46,17 +46,17 @@ def blast_sequence(sequence):
     return True
 
 
-def cut_sequence(sequence, until=None, from_pos=None):
+def cut_sequence(sequence, until_pos=None, from_pos=None):
     """Cut sequence based on until/from parameters."""
-    if until is not None and from_pos is not None:
+    if until_pos is not None and from_pos is not None:
         raise ValueError("Cannot specify both --until and --from")
 
-    if until is not None:
-        if until <= 0 or until > len(sequence):
+    if until_pos is not None:
+        if until_pos <= 0 or until_pos > len(sequence):
             raise ValueError(
-                f"--until position {until} is out of range (1-{len(sequence)})"
+                f"--until position {until_pos} is out of range (1-{len(sequence)})"
             )
-        return sequence[:until]
+        return sequence[:until_pos]
 
     if from_pos is not None:
         if from_pos < 1 or from_pos > len(sequence):
@@ -75,19 +75,22 @@ def main():
         epilog="""
 Examples:
   %(prog)s ATCGATCGATCG               # Provide sequence as argument
-  %(prog)s --until 10 ATCGATCGATCG    # Use first 10 bp
+  %(prog)s --until-pos 10 ATCGATCGATCG    # Use first 10 bp
   %(prog)s --from 5 ATCGATCGATCG      # Use bp from position 5 onwards
   %(prog)s --until 10 --from 5 ATCGATCGATCG    # Use first 10 bp and bp from position 5 onwards
 
         """,
     )
 
-    parser.add_argument("sequence", nargs="?", help="DNA/RNA sequence to BLAST")
+    parser.add_argument(
+        "sequence", nargs="?", help="DNA/RNA sequence to BLAST"
+    )
 
     parser.add_argument(
         "--until",
         "-u",
         type=int,
+        dest="until_pos",
         help="Cut sequence to include all bp up to and including position X",
     )
     parser.add_argument(
@@ -100,16 +103,17 @@ Examples:
 
     args = parser.parse_args()
 
-    # Get sequence from argument or stdin
-    if args.sequence:
-        sequence = args.sequence
-    if not sequence:
-        print("No sequence provided")
+    # Get sequence from argument
+    if not args.sequence:
+        print("Error: No sequence provided")
+        parser.print_help()
         return 1
+
+    sequence = args.sequence
 
     # Cut sequence if requested
     try:
-        sequence = cut_sequence(sequence, args.until, args.from_pos)
+        sequence = cut_sequence(sequence, args.until_pos, args.from_pos)
     except ValueError as e:
         print(f"Error: {e}")
         return 1
